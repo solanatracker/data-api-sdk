@@ -101,6 +101,17 @@ dataStream.subscribe.tx.wallet(walletAddress).on((walletTx) => {
   console.log(`${walletTx.type === 'buy' ? 'Bought' : 'Sold'} token`);
   console.log(`Volume: ${walletTx.volume} USD`);
 });
+
+// Example 6: Subscribe to curve percentage updates
+dataStream.subscribe.curvePercentage('pumpfun', 30).on((data) => {
+  console.log(`Token ${data.token.symbol} reached 30% on Pump.fun`);
+  console.log(`Market cap: ${data.pools[0].marketCap.usd}`);
+});
+
+// Different markets and percentages
+dataStream.subscribe.curvePercentage('meteora-curve', 75).on((data) => {
+  console.log(`Meteora token at 75%: ${data.token.name}`);
+});
 ```
 
 Available subscription methods:
@@ -128,6 +139,9 @@ dataStream.subscribe.graduated();               // Graduated tokens
 // Metadata and holders
 dataStream.subscribe.metadata(tokenAddress);    // Token metadata
 dataStream.subscribe.holders(tokenAddress);     // Holder updates
+
+// Curve percentage updates
+dataStream.subscribe.curvePercentage(market, percentage); // Market options: 'launchpad', 'pumpfun', 'boop', 'meteora-curve'
 ```
 
 Each subscription method returns a response object with:
@@ -195,7 +209,7 @@ const searchResults = await client.searchTokens({
 });
 
 // Get latest tokens
-const latestTokens = await client.getLatestTokens(1);
+const latestTokens = await client.getLatestTokens(100);
 
 // Get information about multiple tokens
 const multipleTokens = await client.getMultipleTokens([
@@ -259,6 +273,12 @@ const wallet = await client.getWallet('walletAddress');
 // Get wallet tokens with pagination
 const walletPage = await client.getWalletPage('walletAddress', 2);
 
+// Get wallet portfolio chart data with historical values and PnL
+const walletChart = await client.getWalletChart('walletAddress');
+console.log('24h PnL:', walletChart.pnl['24h']);
+console.log('30d PnL:', walletChart.pnl['30d']);
+console.log('Chart data points:', walletChart.chartData.length);
+
 // Get wallet trades
 const walletTrades = await client.getWalletTrades('walletAddress', undefined, true, true, false);
 ```
@@ -315,6 +335,25 @@ const topTraders = await client.getTopTraders(1, true, 'total');
 const tokenTopTraders = await client.getTokenTopTraders('tokenAddress');
 ```
 
+### Events Endpoints (Live Data)
+
+```typescript
+// Get raw event data for live processing
+// NOTE: For non-live statistics, use getTokenStats() instead which is more efficient
+const events = await client.getEvents('tokenAddress');
+console.log('Total events:', events.length);
+
+// Get events for a specific pool
+const poolEvents = await client.getPoolEvents('tokenAddress', 'poolAddress');
+
+// Process events into statistics using the processEvents utility
+import { processEventsAsync } from '@solana-tracker/data-api';
+
+const stats = await processEvents(events);
+console.log('1h stats:', stats['1h']);
+console.log('24h volume:', stats['24h']?.volume.total);
+```
+
 ### Additional Endpoints
 
 ```typescript
@@ -323,6 +362,10 @@ const tokenStats = await client.getTokenStats('tokenAddress');
 
 // Get detailed stats for a specific token and pool
 const poolStats = await client.getPoolStats('tokenAddress', 'poolAddress');
+
+// Get remaining API credits
+const credits = await client.getCredits();
+console.log('Remaining credits:', credits.credits);
 ```
 
 ## Error Handling
