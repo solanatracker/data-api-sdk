@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import "./websocket-polyfill";
+import { TokenInfo, PoolInfo, TokenEvents, TokenRisk } from './interfaces';
 
 /**
  * Room types for the WebSocket data stream
@@ -17,12 +18,14 @@ export enum DatastreamRoom {
     // Pump.fun stages
     GRADUATING = 'graduating',
     GRADUATED = 'graduated',
+    CURVE_PERCENTAGE = 'curve',
     // Metadata and holders
     METADATA = 'metadata',
     HOLDERS = 'holders',
     // Token changes
     TOKEN_CHANGES = 'token',
     POOL_CHANGES = 'pool'
+
 }
 
 /**
@@ -53,6 +56,16 @@ export interface DatastreamConfig {
      * @default 0.5
      */
     randomizationFactor?: number;
+    /**
+     * Whether to run WebSocket connections in a Web Worker
+     * @default false
+     */
+    useWorker?: boolean;
+    /**
+     * Custom worker script URL (optional)
+     * If not provided, will use inline worker
+     */
+    workerUrl?: string;
 }
 
 interface SubscribeResponse<T = any> {
@@ -65,6 +78,20 @@ interface SubscribeResponse<T = any> {
     on(callback: (data: T) => void): {
         unsubscribe: () => void;
     };
+}
+
+/**
+ * Message types for worker communication
+ */
+interface WorkerMessage {
+    type: 'connect' | 'disconnect' | 'subscribe' | 'unsubscribe' | 'send';
+    data?: any;
+}
+
+interface WorkerResponse {
+    type: 'connected' | 'disconnected' | 'message' | 'error' | 'reconnecting';
+    data?: any;
+    socketType?: string;
 }
 
 /**
@@ -84,26 +111,42 @@ class SubscriptionMethods {
     /**
      * Subscribe to latest tokens and pools
      */
-    latest(): SubscribeResponse<PoolUpdate> {
-        return this.ds._subscribe<PoolUpdate>('latest');
+    latest(): SubscribeResponse<TokenDetailWebsocket> {
+        return this.ds._subscribe<TokenDetailWebsocket>('latest');
     }
 
     /**
      * Subscribe to graduating tokens
      * @param marketCapThresholdSOL Optional market cap threshold in SOL
      */
-    graduating(marketCapThresholdSOL?: number): SubscribeResponse<PoolUpdate> {
+    graduating(marketCapThresholdSOL?: number): SubscribeResponse<TokenDetailWebsocket> {
         const room = marketCapThresholdSOL
             ? `graduating:sol:${marketCapThresholdSOL}`
             : 'graduating';
-        return this.ds._subscribe<PoolUpdate>(room);
+        return this.ds._subscribe<TokenDetailWebsocket>(room);
     }
+
+    /**
+ * Subscribe to tokens reaching a specific curve percentage for a market
+ * @param market The market type: 'launchpad', 'pumpfun', 'boop', or 'meteora-curve'
+ * @param percentage The curve percentage threshold (e.g., 30, 50, 75)
+ * @returns Subscription response with curve percentage updates
+ */
+    curvePercentage(market: 'launchpad' | 'pumpfun' | 'boop' | 'meteora-curve', percentage: number): SubscribeResponse<CurvePercentageUpdate> {
+        if (percentage < 0 || percentage > 100) {
+            throw new Error('Percentage must be between 30 and 100');
+        }
+
+        const room = `${market}:curve:${percentage}`;
+        return this.ds._subscribe<CurvePercentageUpdate>(room);
+    }
+
 
     /**
      * Subscribe to graduated tokens
      */
-    graduated(): SubscribeResponse<PoolUpdate> {
-        return this.ds._subscribe<PoolUpdate>('graduated');
+    graduated(): SubscribeResponse<TokenDetailWebsocket> {
+        return this.ds._subscribe<TokenDetailWebsocket>('graduated');
     }
 
     /**
@@ -137,6 +180,8 @@ class SubscriptionMethods {
     pool(poolId: string): SubscribeResponse<PoolUpdate> {
         return this.ds._subscribe<PoolUpdate>(`pool:${poolId}`);
     }
+
+
 }
 
 /**
@@ -227,6 +272,9 @@ export class Datastream extends EventEmitter {
     private transactions = new Set<string>();
     private autoReconnect: boolean;
     private isConnecting = false;
+    private useWorker: boolean;
+    private worker: Worker | null = null;
+    private workerUrl?: string;
 
     /**
      * Creates a new Datastream client for real-time Solana Tracker data
@@ -239,6 +287,8 @@ export class Datastream extends EventEmitter {
         this.reconnectDelay = config.reconnectDelay || 2500;
         this.reconnectDelayMax = config.reconnectDelayMax || 4500;
         this.randomizationFactor = config.randomizationFactor || 0.5;
+        this.useWorker = config.useWorker || false;
+        this.workerUrl = config.workerUrl;
         this.subscribe = new SubscriptionMethods(this);
         if (typeof window !== 'undefined') {
             window.addEventListener('beforeunload', this.disconnect.bind(this));
@@ -250,6 +300,10 @@ export class Datastream extends EventEmitter {
      * @returns Promise that resolves when connected
      */
     async connect(): Promise<void> {
+        if (this.useWorker) {
+            return this.connectWithWorker();
+        }
+
         if (this.socket && this.transactionSocket) {
             return;
         }
@@ -276,6 +330,308 @@ export class Datastream extends EventEmitter {
                 this.reconnect();
             }
         }
+    }
+
+    /**
+     * Connects using Web Worker
+     * @returns Promise that resolves when connected
+     */
+    private async connectWithWorker(): Promise<void> {
+        if (this.worker) {
+            return;
+        }
+
+        if (this.isConnecting) {
+            return;
+        }
+
+        this.isConnecting = true;
+
+        try {
+            if (this.workerUrl) {
+                this.worker = new Worker(this.workerUrl);
+            } else {
+                // Create inline worker
+                const workerCode = this.getWorkerCode();
+                const blob = new Blob([workerCode], { type: 'application/javascript' });
+                const workerUrl = URL.createObjectURL(blob);
+                this.worker = new Worker(workerUrl);
+            }
+
+            this.setupWorkerListeners();
+
+            // Send connect message to worker
+            this.worker.postMessage({
+                type: 'connect',
+                data: {
+                    wsUrl: this.wsUrl,
+                    autoReconnect: this.autoReconnect,
+                    reconnectDelay: this.reconnectDelay,
+                    reconnectDelayMax: this.reconnectDelayMax,
+                    randomizationFactor: this.randomizationFactor
+                }
+            });
+
+            // Wait for connection
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('Worker connection timeout'));
+                }, 10000);
+
+                const handler = (e: MessageEvent<WorkerResponse>) => {
+                    if (e.data.type === 'connected') {
+                        clearTimeout(timeout);
+                        this.worker?.removeEventListener('message', handler);
+                        resolve();
+                    } else if (e.data.type === 'error') {
+                        clearTimeout(timeout);
+                        this.worker?.removeEventListener('message', handler);
+                        reject(new Error(e.data.data));
+                    }
+                };
+
+                this.worker!.addEventListener('message', handler);
+            });
+
+            this.isConnecting = false;
+            this.emit('connected');
+        } catch (e) {
+            this.isConnecting = false;
+            this.emit('error', e);
+
+            if (this.autoReconnect) {
+                this.reconnect();
+            }
+        }
+    }
+
+    /**
+     * Sets up worker event listeners
+     */
+    private setupWorkerListeners(): void {
+        if (!this.worker) return;
+
+        this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+            const { type, data, socketType } = event.data;
+
+            switch (type) {
+                case 'message':
+                    this.handleWorkerMessage(data);
+                    break;
+                case 'disconnected':
+                    this.emit('disconnected', socketType || 'all');
+                    if (socketType === 'all') {
+                        this.worker = null;
+                    }
+                    break;
+                case 'error':
+                    this.emit('error', new Error(data));
+                    break;
+                case 'reconnecting':
+                    this.emit('reconnecting', data);
+                    break;
+            }
+        };
+
+        this.worker.onerror = (error) => {
+            this.emit('error', error);
+        };
+    }
+
+    /**
+     * Handles messages from worker
+     */
+    private handleWorkerMessage(data: any): void {
+        const { room, message } = data;
+
+        // Deduplicate transactions
+        if (message?.tx && this.transactions.has(message.tx)) {
+            return;
+        } else if (message?.tx) {
+            this.transactions.add(message.tx);
+        }
+
+        // Special handling for price events
+        if (room.includes('price:')) {
+            this.emit(`price-by-token:${message.token}`, message);
+        }
+
+        this.emit(room, message);
+    }
+
+    /**
+     * Gets the worker code as a string
+     */
+    private getWorkerCode(): string {
+        return `
+            let mainSocket = null;
+            let transactionSocket = null;
+            let config = {};
+            let reconnectAttempts = 0;
+            let subscribedRooms = new Set();
+            let transactions = new Set();
+
+            self.addEventListener('message', (event) => {
+                const { type, data } = event.data;
+
+                switch (type) {
+                    case 'connect':
+                        config = data;
+                        connect();
+                        break;
+                    case 'disconnect':
+                        disconnect();
+                        break;
+                    case 'subscribe':
+                        subscribe(data.room);
+                        break;
+                    case 'unsubscribe':
+                        unsubscribe(data.room);
+                        break;
+                    case 'send':
+                        send(data.socket, data.message);
+                        break;
+                }
+            });
+
+            async function connect() {
+                try {
+                    await Promise.all([
+                        createSocket('main'),
+                        createSocket('transaction')
+                    ]);
+                    self.postMessage({ type: 'connected' });
+                } catch (e) {
+                    self.postMessage({ type: 'error', data: e.message });
+                    if (config.autoReconnect) {
+                        reconnect();
+                    }
+                }
+            }
+
+            function createSocket(type) {
+                return new Promise((resolve, reject) => {
+                    try {
+                        const socket = new WebSocket(config.wsUrl);
+
+                        socket.onopen = () => {
+                            if (type === 'main') {
+                                mainSocket = socket;
+                            } else {
+                                transactionSocket = socket;
+                            }
+                            reconnectAttempts = 0;
+                            setupSocketListeners(socket, type);
+                            resubscribeToRooms();
+                            resolve();
+                        };
+
+                        socket.onerror = (error) => {
+                            reject(error);
+                        };
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+            }
+
+            function setupSocketListeners(socket, type) {
+                socket.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        if (message.type === 'message') {
+                            self.postMessage({
+                                type: 'message',
+                                data: {
+                                    room: message.room,
+                                    message: message.data
+                                }
+                            });
+                        }
+                    } catch (error) {
+                        self.postMessage({ type: 'error', data: error.message });
+                    }
+                };
+
+                socket.onclose = () => {
+                    if (type === 'main') {
+                        mainSocket = null;
+                    } else if (type === 'transaction') {
+                        transactionSocket = null;
+                    }
+
+                    self.postMessage({ type: 'disconnected', socketType: type });
+
+                    if (config.autoReconnect) {
+                        reconnect();
+                    }
+                };
+            }
+
+            function disconnect() {
+                if (mainSocket) {
+                    mainSocket.close();
+                    mainSocket = null;
+                }
+                if (transactionSocket) {
+                    transactionSocket.close();
+                    transactionSocket = null;
+                }
+                subscribedRooms.clear();
+                transactions.clear();
+                self.postMessage({ type: 'disconnected', socketType: 'all' });
+            }
+
+            function reconnect() {
+                self.postMessage({ type: 'reconnecting', data: reconnectAttempts });
+
+                const delay = Math.min(
+                    config.reconnectDelay * Math.pow(2, reconnectAttempts),
+                    config.reconnectDelayMax
+                );
+
+                const jitter = delay * config.randomizationFactor;
+                const reconnectDelay = delay + Math.random() * jitter;
+
+                setTimeout(() => {
+                    reconnectAttempts++;
+                    connect();
+                }, reconnectDelay);
+            }
+
+            function subscribe(room) {
+                subscribedRooms.add(room);
+                const socket = room.includes('transaction') ? transactionSocket : mainSocket;
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ type: 'join', room }));
+                }
+            }
+
+            function unsubscribe(room) {
+                subscribedRooms.delete(room);
+                const socket = room.includes('transaction') ? transactionSocket : mainSocket;
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ type: 'leave', room }));
+                }
+            }
+
+            function send(socketType, message) {
+                const socket = socketType === 'transaction' ? transactionSocket : mainSocket;
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(message);
+                }
+            }
+
+            function resubscribeToRooms() {
+                if (mainSocket && mainSocket.readyState === WebSocket.OPEN &&
+                    transactionSocket && transactionSocket.readyState === WebSocket.OPEN) {
+                    for (const room of subscribedRooms) {
+                        const socket = room.includes('transaction') ? transactionSocket : mainSocket;
+                        socket.send(JSON.stringify({ type: 'join', room }));
+                    }
+                }
+            }
+        `;
     }
 
     /**
@@ -359,14 +715,20 @@ export class Datastream extends EventEmitter {
      * Disconnects from the WebSocket server
      */
     disconnect(): void {
-        if (this.socket) {
-            this.socket.close();
-            this.socket = null;
-        }
+        if (this.useWorker && this.worker) {
+            this.worker.postMessage({ type: 'disconnect' });
+            this.worker.terminate();
+            this.worker = null;
+        } else {
+            if (this.socket) {
+                this.socket.close();
+                this.socket = null;
+            }
 
-        if (this.transactionSocket) {
-            this.transactionSocket.close();
-            this.transactionSocket = null;
+            if (this.transactionSocket) {
+                this.transactionSocket.close();
+                this.transactionSocket = null;
+            }
         }
 
         this.subscribedRooms.clear();
@@ -405,15 +767,19 @@ export class Datastream extends EventEmitter {
     _subscribe<T = any>(room: string): SubscribeResponse<T> {
         this.subscribedRooms.add(room);
 
-        const socket = room.includes('transaction')
-            ? this.transactionSocket
-            : this.socket;
-
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'join', room }));
+        if (this.useWorker && this.worker) {
+            this.worker.postMessage({ type: 'subscribe', data: { room } });
         } else {
-            // If not connected, we'll subscribe when connection is established
-            this.connect();
+            const socket = room.includes('transaction')
+                ? this.transactionSocket
+                : this.socket;
+
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'join', room }));
+            } else {
+                // If not connected, we'll subscribe when connection is established
+                this.connect();
+            }
         }
 
         return {
@@ -474,12 +840,16 @@ export class Datastream extends EventEmitter {
     unsubscribe(room: string): Datastream {
         this.subscribedRooms.delete(room);
 
-        const socket = room.includes('transaction')
-            ? this.transactionSocket
-            : this.socket;
+        if (this.useWorker && this.worker) {
+            this.worker.postMessage({ type: 'unsubscribe', data: { room } });
+        } else {
+            const socket = room.includes('transaction')
+                ? this.transactionSocket
+                : this.socket;
 
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'leave', room }));
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'leave', room }));
+            }
         }
 
         return this;
@@ -510,6 +880,10 @@ export class Datastream extends EventEmitter {
      * @returns True if connected, false otherwise
      */
     isConnected(): boolean {
+        if (this.useWorker) {
+            return !!this.worker;
+        }
+
         return (
             !!this.socket &&
             this.socket.readyState === WebSocket.OPEN &&
@@ -517,6 +891,20 @@ export class Datastream extends EventEmitter {
             this.transactionSocket.readyState === WebSocket.OPEN
         );
     }
+}
+
+export interface TokenDetailWebsocket {
+    token: TokenInfo;
+    pools: PoolInfo[];
+    events: TokenEvents;
+    risk: TokenRisk;
+}
+
+export interface CurvePercentageUpdate {
+    token: TokenInfo;
+    pools: PoolInfo[];
+    events: TokenEvents;
+    risk: TokenRisk;
 }
 
 // Export types for specific data structures
@@ -600,6 +988,7 @@ export interface WalletTransaction {
             image?: string;
             decimals: number;
             amount: number;
+            priceUsd?: number;
             address: string;
         };
         to: {
@@ -608,6 +997,7 @@ export interface WalletTransaction {
             image?: string;
             decimals: number;
             amount: number;
+            priceUsd?: number;
             address: string;
         };
     };

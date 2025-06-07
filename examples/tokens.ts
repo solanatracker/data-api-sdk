@@ -1,12 +1,12 @@
 /**
  * Token-related examples for the Solana Tracker API
  */
-import { Client } from '@solanatracker/data-api';
+import { Client } from '@solanatracker/data-api'
 import { handleError } from './utils';
 
 // Initialize the API client with your API key
 const client = new Client({
-  apiKey: 'YOUR_API_KEY_HERE'
+  apiKey: 'YOUR_API_KEY'
 });
 
 /**
@@ -165,6 +165,39 @@ export async function getMultipleTokens() {
       
       console.log(`   Holders: ${token.holders || 'Not available'}`);
     });
+    
+    return tokens;
+  } catch (error) {
+    handleError(error);
+    return null;
+  }
+}
+
+/**
+ * Example 6: Get a Pumpvision / Memescope style token overview
+ */
+export async function getTokenOverview() {
+  try {
+
+    const tokens = await client.getTokenOverview(100);
+    
+    console.log('\n=== Token Overview ===');
+    console.log(tokens);
+    
+    return tokens;
+  } catch (error) {
+    handleError(error);
+    return null;
+  }
+}
+
+export async function getTokensByDeployer(deployer: string, page: number = 1, limit: number = 100) {
+  try {
+    const tokens = await client.getTokensByDeployer(deployer, page, limit);
+    
+    console.log(`\n=== Tokens by Deployer (${deployer}) - Page ${page} ===`);
+   
+    console.log(tokens);
     
     return tokens;
   } catch (error) {

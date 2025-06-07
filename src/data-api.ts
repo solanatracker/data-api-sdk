@@ -21,8 +21,14 @@ import {
   TokenPnLResponse,
   FirstBuyerData,
   TopTradersResponse,
-  TokenStats
+  TokenStats,
+  WalletChartResponse,
+  CreditsResponse,
+  WalletTradesResponse,
+  ProcessedEvent,
 } from './interfaces';
+
+import { decodeBinaryEvents } from './event-processor';
 
 export class DataApiError extends Error {
   constructor(
@@ -193,14 +199,27 @@ export class Client {
     return this.request<AthPrice>(`/tokens/${tokenAddress}/ath`);
   }
 
+
   /**
-   * Get tokens created by a specific wallet
+   * Get tokens created by a specific wallet with pagination
    * @param wallet The deployer wallet address
+   * @param page Page number (default: 1)
+   * @param limit Number of items per page (default: 250, max: 500)
    * @returns List of tokens created by the deployer
    */
-  async getTokensByDeployer(wallet: string): Promise<DeployerTokensResponse> {
+  async getTokensByDeployer(
+    wallet: string,
+    page?: number,
+    limit?: number
+  ): Promise<DeployerTokensResponse> {
     this.validatePublicKey(wallet, 'wallet');
-    return this.request<DeployerTokensResponse>(`/deployer/${wallet}`);
+
+    const params = new URLSearchParams();
+    if (page) params.append('page', page.toString());
+    if (limit) params.append('limit', limit.toString());
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<DeployerTokensResponse>(`/deployer/${wallet}${query}`);
   }
 
   /**
@@ -275,11 +294,17 @@ export class Client {
   }
 
   /**
-   * Get an overview of latest, graduating, and graduated tokens
-   * @returns Token overview
-   */
-  async getTokenOverview(): Promise<TokenOverview> {
-    return this.request<TokenOverview>('/tokens/multi/all');
+ * Get an overview of latest, graduating, and graduated tokens
+ * @param limit Optional limit for the number of tokens per category
+ * @returns Token overview (Memescope / Pumpvision style)
+ */
+  async getTokenOverview(limit?: number): Promise<TokenOverview> {
+    if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
+      throw new ValidationError('Limit must be a positive integer');
+    }
+
+    const endpoint = limit ? `/tokens/multi/all?limit=${limit}` : '/tokens/multi/all';
+    return this.request<TokenOverview>(endpoint);
   }
 
   /**
@@ -403,6 +428,7 @@ export class Client {
     return this.request<WalletBasicResponse>(`/wallet/${owner}/basic`);
   }
 
+
   /**
    * Get all tokens in a wallet
    * @param owner Wallet address
@@ -425,6 +451,17 @@ export class Client {
   }
 
   /**
+ * Get wallet portfolio chart data with PnL information
+ * @param wallet Wallet address
+ * @returns Wallet chart data with historical values and PnL
+ * @throws DataApiError if no data found for the wallet
+ */
+  async getWalletChart(wallet: string): Promise<WalletChartResponse> {
+    this.validatePublicKey(wallet, 'wallet');
+    return this.request<WalletChartResponse>(`/wallet/${wallet}/chart`);
+  }
+
+  /**
    * Get wallet trades
    * @param owner Wallet address
    * @param cursor Pagination cursor
@@ -439,7 +476,7 @@ export class Client {
     showMeta?: boolean,
     parseJupiter?: boolean,
     hideArb?: boolean
-  ): Promise<TradesResponse> {
+  ): Promise<WalletTradesResponse> {
     this.validatePublicKey(owner, 'owner');
 
     const params = new URLSearchParams();
@@ -449,7 +486,7 @@ export class Client {
     if (hideArb) params.append('hideArb', 'true');
 
     const query = params.toString() ? `?${params.toString()}` : '';
-    return this.request<TradesResponse>(`/wallet/${owner}/trades${query}`);
+    return this.request<WalletTradesResponse>(`/wallet/${owner}/trades${query}`);
   }
 
   // ======== TRADE ENDPOINTS ========
@@ -775,5 +812,89 @@ export class Client {
     this.validatePublicKey(tokenAddress, 'tokenAddress');
     this.validatePublicKey(poolAddress, 'poolAddress');
     return this.request<TokenStats>(`/stats/${tokenAddress}/${poolAddress}`);
+  }
+
+  /**
+ * Get remaining API credits for the current API key
+ * @returns Credits information
+ */
+  async getCredits(): Promise<CreditsResponse> {
+    return this.request<CreditsResponse>('/credits');
+  }
+
+  /**
+   * Get events data for a token (all pools)
+   * NOTE: For non-live statistics, use getTokenStats() instead which is more efficient
+   * @param tokenAddress The token's mint address
+   * @returns Decoded events array
+   */
+  async getEvents(tokenAddress: string): Promise<ProcessedEvent[]> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+
+    // Make a custom request for binary data
+    const response = await fetch(`${this.baseUrl}/events/${tokenAddress}`, {
+      headers: {
+        'x-api-key': this.apiKey,
+        'Accept': 'application/octet-stream'
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After');
+        throw new RateLimitError(
+          'Rate limit exceeded',
+          retryAfter ? parseInt(retryAfter) : undefined
+        );
+      }
+      throw new DataApiError(
+        `API request failed: ${response.status} ${response.statusText}`,
+        response.status
+      );
+    }
+
+    const binaryData = await response.arrayBuffer();
+    const events = decodeBinaryEvents(binaryData);
+
+    return events;
+  }
+
+  /**
+   * Get events data for a specific token and pool
+   * NOTE: For non-live statistics, use getPoolStats() instead which is more efficient
+   * @param tokenAddress The token's mint address
+   * @param poolAddress The pool's address
+   * @returns Decoded events array
+   */
+  async getPoolEvents(tokenAddress: string, poolAddress: string): Promise<ProcessedEvent[]> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+    this.validatePublicKey(poolAddress, 'poolAddress');
+
+    // Make a custom request for binary data
+    const response = await fetch(`${this.baseUrl}/events/${tokenAddress}/${poolAddress}`, {
+      headers: {
+        'x-api-key': this.apiKey,
+        'Accept': 'application/octet-stream'
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After');
+        throw new RateLimitError(
+          'Rate limit exceeded',
+          retryAfter ? parseInt(retryAfter) : undefined
+        );
+      }
+      throw new DataApiError(
+        `API request failed: ${response.status} ${response.statusText}`,
+        response.status
+      );
+    }
+
+    const binaryData = await response.arrayBuffer();
+    const events = decodeBinaryEvents(binaryData);
+
+    return events;
   }
 }

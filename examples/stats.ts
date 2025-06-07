@@ -1,12 +1,12 @@
 /**
  * Stats-related examples for the Solana Tracker API
  */
-import { Client } from '@solanatracker/data-api';
+import { Client, processEventsAsync } from '@solanatracker/data-api'
 import { handleError } from './utils';
 
 // Initialize the API client with your API key
 const client = new Client({
-  apiKey: 'YOUR_API_KEY_HERE'
+  apiKey: 'YOUR_API_KEY',
 });
 
 /**
@@ -160,6 +160,21 @@ export async function compareTokenStats(tokenAddress: string) {
     return null;
   }
 }
+
+/**
+ * Example 3: Get token events for live updates. 
+ */
+export async function getTokenEvents() {
+  const events = await client.getEvents('6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN');
+  console.log(`\n=== Token Events ===`);
+  console.log(events)
+
+  // In real life applications you store events and add new trades from Datastream to it. Then run processEventsAsync to get live statistics
+  console.log(`\nProcessing events...`);
+  const stats = await processEventsAsync(events);
+  console.log(stats['24h'])
+}
+
 
 /**
  * Helper function to convert timeframe to hours

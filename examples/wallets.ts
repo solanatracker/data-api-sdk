@@ -1,13 +1,13 @@
 /**
  * Wallet-related examples for the Solana Tracker API
  */
-import { Client } from '@solanatracker/data-api';
+import { Client } from '@solanatracker/data-api'
 import { handleError } from './utils';
 
 
 // Initialize the API client with your API key
 const client = new Client({
-  apiKey: 'YOUR_API_KEY_HERE'
+  apiKey: 'YOUR_API_KEY'
 });
 
 // Replace with a real wallet address for testing
@@ -191,6 +191,23 @@ export async function getWalletTradesWithCursor(walletAddress: string = EXAMPLE_
     }
     
     return trades;
+  } catch (error) {
+    handleError(error);
+    return null;
+  }
+}
+
+/**
+ * Example 6: Get wallet chart (PnL of total value over time)
+ */
+export async function getWalletChart(walletAddress: string = EXAMPLE_WALLET) {
+  try {
+    const chart = await client.getWalletChart(walletAddress);
+  
+    console.log('\n=== Wallet Chart (PnL Over Time) ===');
+    console.log(chart);
+    
+    return chart;
   } catch (error) {
     handleError(error);
     return null;

@@ -8,6 +8,7 @@ const dataStream = new Datastream({
   reconnectDelay: 2500, // Initial reconnect delay in ms (default: 2500)
   reconnectDelayMax: 4500, // Maximum reconnect delay in ms (default: 4500)
   randomizationFactor: 0.5, // Randomization factor for reconnect delay (default: 0.5)
+  useWorker: true, // Use Web Worker for background processing (default: false)
 });
 
 // ************************************
@@ -62,7 +63,7 @@ const subscribeToLatest = () => {
     console.log(`Token: ${data.tokenAddress}`);
     console.log(`Market Cap: $${data.marketCap?.usd.toLocaleString()}`);
   });
-  
+
   return subscription; // Contains unsubscribe() method
 };
 
@@ -73,7 +74,7 @@ const subscribeToGraduating = (marketCapThresholdSOL?: number) => {
     console.log(`Token: ${data.tokenAddress}`);
     console.log(`Market Cap: $${data.marketCap?.usd.toLocaleString()}`);
   });
-  
+
   return subscription;
 };
 
@@ -84,7 +85,7 @@ const subscribeToGraduated = () => {
     console.log(`Token: ${data.tokenAddress}`);
     console.log(`Market Cap: $${data.marketCap?.usd.toLocaleString()}`);
   });
-  
+
   return subscription;
 };
 
@@ -96,7 +97,7 @@ const subscribeToMetadata = (tokenAddress: string = TOKEN_ADDRESS) => {
     console.log(`Symbol: ${data.symbol}`);
     console.log(`Description: ${data.description || 'N/A'}`);
   });
-  
+
   return subscription;
 };
 
@@ -106,7 +107,7 @@ const subscribeToHolders = (tokenAddress: string = TOKEN_ADDRESS) => {
     console.log('Holder count update:', data);
     console.log(`Total holders: ${data.total}`);
   });
-  
+
   return subscription;
 };
 
@@ -118,7 +119,7 @@ const subscribeToTokenChanges = (tokenAddress: string = TOKEN_ADDRESS) => {
     console.log(`Liquidity: $${data.liquidity?.usd}`);
     console.log(`Market Cap: $${data.marketCap?.usd}`);
   });
-  
+
   return subscription;
 };
 
@@ -131,7 +132,7 @@ const subscribeToPoolChanges = (poolId: string = POOL_ADDRESS) => {
     console.log(`Price: $${data.price?.usd}`);
     console.log(`Liquidity: $${data.liquidity?.usd}`);
   });
-  
+
   return subscription;
 };
 
@@ -148,7 +149,7 @@ const subscribeToTokenPrice = (tokenAddress: string = TOKEN_ADDRESS) => {
     console.log(`Pool: ${data.pool}`);
     console.log(`Time: ${new Date(data.time).toLocaleTimeString()}`);
   });
-  
+
   return subscription;
 };
 
@@ -161,7 +162,7 @@ const subscribeToAllTokenPrices = (tokenAddress: string = TOKEN_ADDRESS) => {
     console.log(`Pool: ${data.pool}`);
     console.log(`Time: ${new Date(data.time).toLocaleTimeString()}`);
   });
-  
+
   return subscription;
 };
 
@@ -174,7 +175,7 @@ const subscribeToPoolPrice = (poolId: string = POOL_ADDRESS) => {
     console.log(`Pool: ${data.pool}`);
     console.log(`Time: ${new Date(data.time).toLocaleTimeString()}`);
   });
-  
+
   return subscription;
 };
 
@@ -195,13 +196,13 @@ const subscribeToTokenTransactions = (tokenAddress: string = TOKEN_ADDRESS) => {
     console.log(`Time: ${new Date(data.time).toLocaleTimeString()}`);
     console.log('---');
   });
-  
+
   return subscription;
 };
 
 // Subscribe to transactions for a specific token and pool
 const subscribeToPoolTransactions = (
-  tokenAddress: string = TOKEN_ADDRESS, 
+  tokenAddress: string = TOKEN_ADDRESS,
   poolId: string = POOL_ADDRESS
 ) => {
   const subscription = dataStream.subscribe.tx.pool(tokenAddress, poolId).on((data) => {
@@ -214,7 +215,7 @@ const subscribeToPoolTransactions = (
     console.log(`Time: ${new Date(data.time).toLocaleTimeString()}`);
     console.log('---');
   });
-  
+
   return subscription;
 };
 
@@ -227,68 +228,30 @@ const subscribeToWalletTransactions = (walletAddress: string = WALLET_ADDRESS) =
     console.log(`Price: $${data.priceUsd}`);
     console.log(`Volume: $${data.volume}`);
     console.log(`SOL Volume: ${data.solVolume}`);
-    
+
     if (data.token) {
       console.log('Token Details:');
       console.log(`From: ${data.token.from.name} (${data.token.from.symbol})`);
       console.log(`To: ${data.token.to.name} (${data.token.to.symbol})`);
     }
-    
+
     console.log(`Time: ${new Date(data.time).toLocaleTimeString()}`);
     console.log('---');
   });
-  
+
   return subscription;
 };
 
-// ************************************
-// Combined example demonstrating multiple subscriptions
-// ************************************
 
-const runCombinedExample = async () => {
-  // Connect to the datastream
-  await dataStream.connect();
-  
-  console.log('Setting up subscriptions...');
-  
-  // Track basic token info
-  const tokenAddress = TOKEN_ADDRESS;
-  
-  // Subscribe to price updates
-  const priceSubscription = dataStream.subscribe.price.token(tokenAddress).on((priceData) => {
-    console.log(`Price Update: $${priceData.price}`);
+const subscribeToPumpFunCurvePercentage = () => {
+  const subscription = dataStream.subscribe.curvePercentage('pumpfun', 30);
+  subscription.on((data) => {
+    console.log(`Token ${data.token.symbol} reached 30% on Pump.fun`);
+    console.log(`Market cap: ${data.pools[0].marketCap.usd}`);
   });
-  
-  // Subscribe to transactions
-  const txSubscription = dataStream.subscribe.tx.token(tokenAddress).on((tx) => {
-    console.log(`Transaction: ${tx.type} ${tx.amount} at $${tx.priceUsd}`);
-  });
-  
-  // Subscribe to holder updates
-  const holderSubscription = dataStream.subscribe.holders(tokenAddress).on((holderData) => {
-    console.log(`Holders: ${holderData.total}`);
-  });
-  
-  // Subscribe to latest tokens
-  const latestSubscription = dataStream.subscribe.latest().on((tokenData) => {
-    console.log(`New Token: ${tokenData.tokenAddress}`);
-  });
-  
-  console.log('All subscriptions active! Monitoring for 30 seconds...');
-  
-  // After 30 seconds, unsubscribe from everything
-  setTimeout(() => {
-    console.log('Cleaning up subscriptions...');
-    
-    priceSubscription.unsubscribe();
-    txSubscription.unsubscribe();
-    holderSubscription.unsubscribe();
-    latestSubscription.unsubscribe();
-    
-    console.log('All subscriptions removed.');
-    dataStream.disconnect();
-  }, 30000);
-};
+}
+
+
 
 // ************************************
 // Example execution

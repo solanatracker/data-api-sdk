@@ -17,3 +17,6 @@ export {
 
 // Export all interfaces
 export * from './interfaces';
+
+// Export all interfaces
+export * from './event-processor';
