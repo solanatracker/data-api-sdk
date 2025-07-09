@@ -222,7 +222,7 @@ const subscribeToPoolTransactions = (
 
 // Subscribe to transactions for a specific wallet
 const subscribeToWalletTransactions = (walletAddress: string = WALLET_ADDRESS) => {
-  const subscription = dataStream.subscribe.tx.wallet(walletAddress).on((data) => {
+  const subscription = dataStream.subscribe.tx.wallet(walletAddress).transactions().on((data) => {
     console.log(`Wallet ${data.type.toUpperCase()} transaction`);
     console.log(`Transaction ID: ${data.tx}`);
     console.log(`Amount: ${data.amount}`);

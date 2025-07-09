@@ -11,7 +11,10 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 - Real-time data streaming via WebSocket (Datastream)
 - Built-in error handling with specific error types
 - Compatible with both Node.js and browser environments
-- **NEW**: Snipers and insiders tracking via WebSocket
+- **NEW**: Snipers and insiders tracking via WebSocket 
+- **NEW**: Enhanced error details for better debugging
+- **NEW**: Subscribe to Wallet Balance updates
+- Support for all pool types including launchpad and meteora curve pools (Shows which platform token is released on, Moonshot, Bonk, Jupiter Studio etc)
 
 ## Installation
 
@@ -129,6 +132,21 @@ dataStream.subscribe.insiders(tokenAddress).on((insiderUpdate) => {
   console.log(`Percentage: ${insiderUpdate.percentage.toFixed(2)}%`);
   console.log(`Total insiders hold: ${insiderUpdate.totalInsiderPercentage.toFixed(2)}%`);
 });
+
+// Example 9: NEW - Monitor wallet balance changes
+const walletAddress = 'YourWalletAddressHere';
+
+// Watch all token balance changes for a wallet
+dataStream.subscribe.tx.wallet(walletAddress).balance().on((balanceUpdate) => {
+  console.log(`Balance update for wallet ${balanceUpdate.wallet}`);
+  console.log(`Token: ${balanceUpdate.token}`);
+  console.log(`New balance: ${balanceUpdate.amount}`);
+});
+
+// Watch specific token balance for a wallet
+dataStream.subscribe.tx.wallet(walletAddress).tokenBalance('tokenMint').on((balanceUpdate) => {
+  console.log(`Token balance changed to: ${balanceUpdate.amount}`);
+});
 ```
 
 Available subscription methods:
@@ -147,7 +165,10 @@ dataStream.subscribe.price.pool(poolId);        // Pool price
 // Transactions
 dataStream.subscribe.tx.token(tokenAddress);    // Token transactions
 dataStream.subscribe.tx.pool(tokenAddress, poolId); // Pool transactions
-dataStream.subscribe.tx.wallet(walletAddress);  // Wallet transactions
+dataStream.subscribe.tx.wallet(walletAddress);  // Wallet transactions (deprecated: use .transactions())
+dataStream.subscribe.tx.wallet(walletAddress).transactions(); // Wallet transactions (new)
+dataStream.subscribe.tx.wallet(walletAddress).balance();      // All token balance changes
+dataStream.subscribe.tx.wallet(walletAddress).tokenBalance(tokenAddress); // Specific token balance
 
 // Pump.fun stages
 dataStream.subscribe.graduating();              // Graduating tokens
@@ -434,13 +455,14 @@ try {
 
 #### New Features:
 1. **Snipers and Insiders Tracking**: Monitor wallets that are identified as snipers or insiders for any token via WebSocket subscriptions
-2. **Enhanced Error Handling**: Error responses now include detailed error information from the API when available
-3. **Subscription Endpoint**: New endpoint to get subscription details including plan, credits, and billing information
-4. **Updated Type Definitions**:
+2. **Wallet Balance Tracking**: Real-time monitoring of token balance changes for any wallet via WebSocket
+3. **Enhanced Error Handling**: Error responses now include detailed error information from the API when available
+4. **Subscription Endpoint**: New endpoint to get subscription details including plan, credits, and billing information
+5. **Updated Type Definitions**:
    - Added `volume24h` field to transaction statistics
    - Enhanced `TokenRisk` interface with detailed snipers/insiders data
    - Added `MultiTokensResponse` for the `/tokens/multi` endpoint
-   - Updated `Launchpad` and `MeteoraCurve` interfaces for finding the specific platform a token launched on (letsbonk.fun, moonshot etc.)
+   - Updated `Launchpad` and `MeteoraCurve` interfaces for pool-specific data (Shows which platform token is released on, Moonshot, Bonk, Jupiter Studio etc)
    - Added `SubscriptionResponse` for subscription information
 
 #### Type Updates:
@@ -463,6 +485,13 @@ interface SniperInsiderUpdate {
   previousPercentage: number;
   totalSniperPercentage: number;
   totalInsiderPercentage: number;
+}
+
+// NEW: Wallet balance update structure
+interface WalletBalanceUpdate {
+  wallet: string;
+  token: string;
+  amount: number;
 }
 
 // UPDATED: Risk structure now includes detailed snipers/insiders
@@ -528,6 +557,8 @@ dataStream.on(`price:${tokenAddress}`, (data) => console.log('Price update:', da
 dataStream.on(`price:${poolAddress}`, (data) => console.log('Price update:', data));
 dataStream.on(`transaction:${tokenAddress}`, (data) => console.log('New transaction:', data));
 dataStream.on(`wallet:${walletAddress}`, (data) => console.log('Wallet transaction:', data));
+dataStream.on(`wallet:${walletAddress}:balance`, (data) => console.log('Wallet balance update:', data)); // NEW
+dataStream.on(`wallet:${walletAddress}:${tokenAddress}:balance`, (data) => console.log('Token balance update:', data)); // NEW
 dataStream.on('graduating', (data) => console.log('Graduating token:', data));
 dataStream.on('graduated', (data) => console.log('Graduated token:', data));
 dataStream.on(`metadata:${tokenAddress}`, (data) => console.log('Metadata update:', data));

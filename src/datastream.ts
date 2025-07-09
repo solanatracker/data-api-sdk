@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import "./websocket-polyfill";
-import { TokenInfo, PoolInfo, TokenEvents, TokenRisk } from './interfaces';
+import { TokenInfo, PoolInfo, TokenEvents, TokenRisk, WalletBalanceUpdate } from './interfaces';
 
 /**
  * Room types for the WebSocket data stream
@@ -235,41 +235,101 @@ class PriceSubscriptions {
     }
 }
 
+
+
+// 3. If you need TypeScript types for better IDE support
+interface WalletSubscriptionMethods {
+  /**
+   * @deprecated Use .transactions().on() instead
+   */
+  on(callback: (data: WalletTransaction) => void): {
+    unsubscribe: () => void;
+  };
+  room: string;
+  transactions(): SubscribeResponse<WalletTransaction>;
+  balance(): SubscribeResponse<WalletBalanceUpdate>;
+  tokenBalance(tokenAddress: string): SubscribeResponse<WalletBalanceUpdate>;
+}
 /**
  * Transaction-related subscription methods
  */
 class TransactionSubscriptions {
-    private ds: Datastream;
+  private ds: Datastream;
 
-    constructor(datastream: Datastream) {
-        this.ds = datastream;
-    }
+  constructor(datastream: Datastream) {
+    this.ds = datastream;
+  }
 
-    /**
-     * Subscribe to transactions for a token across all pools
-     * @param tokenAddress The token address
-     */
-    token(tokenAddress: string): SubscribeResponse<TokenTransaction> {
-        return this.ds._subscribe<TokenTransaction>(`transaction:${tokenAddress}`);
-    }
+  /**
+   * Subscribe to transactions for a token across all pools
+   * @param tokenAddress The token address
+   */
+  token(tokenAddress: string): SubscribeResponse<TokenTransaction> {
+    return this.ds._subscribe<TokenTransaction>(`transaction:${tokenAddress}`);
+  }
 
-    /**
-     * Subscribe to transactions for a specific token and pool
-     * @param tokenAddress The token address
-     * @param poolId The pool address
-     */
-    pool(tokenAddress: string, poolId: string): SubscribeResponse<TokenTransaction> {
-        return this.ds._subscribe<TokenTransaction>(`transaction:${tokenAddress}:${poolId}`);
-    }
+  /**
+   * Subscribe to transactions for a specific token and pool
+   * @param tokenAddress The token address
+   * @param poolId The pool address
+   */
+  pool(tokenAddress: string, poolId: string): SubscribeResponse<TokenTransaction> {
+    return this.ds._subscribe<TokenTransaction>(`transaction:${tokenAddress}:${poolId}`);
+  }
 
-    /**
-     * Subscribe to transactions for a specific wallet
-     * @param walletAddress The wallet address
-     */
-    wallet(walletAddress: string): SubscribeResponse<WalletTransaction> {
-        return this.ds._subscribe<WalletTransaction>(`wallet:${walletAddress}`);
-    }
+  /**
+   * Subscribe to wallet-related events (transactions and balance updates)
+   * 
+   * @example
+   * // For transactions:
+   * datastream.subscribe.tx.wallet('address').transactions().on(callback)
+   * 
+   * // For all balance updates:
+   * datastream.subscribe.tx.wallet('address').balance().on(callback)
+   * 
+   * // For specific token balance:
+   * datastream.subscribe.tx.wallet('address').tokenBalance('token').on(callback)
+   * 
+   * // Legacy (deprecated):
+   * datastream.subscribe.tx.wallet('address').on(callback)
+   * 
+   * @param walletAddress The wallet address
+   */
+wallet(walletAddress: string): WalletSubscriptionMethods {
+    const ds = this.ds;
+    
+    // Create the base subscription
+    const baseSubscription = ds._subscribe<WalletTransaction>(`wallet:${walletAddress}`);
+    
+    // Add the new methods to the subscription object
+    const enhancedSubscription = {
+      ...baseSubscription,
+      
+      // Keep the original on method but mark it as deprecated
+      on: (callback: (data: WalletTransaction) => void) => {
+
+        return baseSubscription.on(callback);
+      },
+      
+      // New methods
+      transactions: () => {
+        return ds._subscribe<WalletTransaction>(`wallet:${walletAddress}`);
+      },
+      
+      balance: () => {
+        return ds._subscribe<WalletBalanceUpdate>(`wallet:${walletAddress}:balance`);
+      },
+      
+      tokenBalance: (tokenAddress: string) => {
+        return ds._subscribe<WalletBalanceUpdate>(`wallet:${walletAddress}:${tokenAddress}:balance`);
+      }
+    };
+    
+    return enhancedSubscription;
+  }
 }
+
+
 
 /**
  * WebSocket service for real-time data streaming from Solana Tracker

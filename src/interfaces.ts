@@ -712,3 +712,9 @@ export interface SubscriptionResponse {
   next_billing_date: string;
   status: string;
 }
+
+export interface WalletBalanceUpdate {
+  wallet: string;
+  token: string;
+  amount: number;
+}
