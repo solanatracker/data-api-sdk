@@ -24,8 +24,10 @@ export enum DatastreamRoom {
     HOLDERS = 'holders',
     // Token changes
     TOKEN_CHANGES = 'token',
-    POOL_CHANGES = 'pool'
-
+    POOL_CHANGES = 'pool',
+    // Snipers and insiders
+    SNIPERS = 'sniper',
+    INSIDERS = 'insider'
 }
 
 /**
@@ -181,7 +183,21 @@ class SubscriptionMethods {
         return this.ds._subscribe<PoolUpdate>(`pool:${poolId}`);
     }
 
+    /**
+     * Subscribe to sniper updates for a token
+     * @param tokenAddress The token address
+     */
+    snipers(tokenAddress: string): SubscribeResponse<SniperInsiderUpdate> {
+        return this.ds._subscribe<SniperInsiderUpdate>(`sniper:${tokenAddress}`);
+    }
 
+    /**
+     * Subscribe to insider updates for a token
+     * @param tokenAddress The token address
+     */
+    insiders(tokenAddress: string): SubscribeResponse<SniperInsiderUpdate> {
+        return this.ds._subscribe<SniperInsiderUpdate>(`insider:${tokenAddress}`);
+    }
 }
 
 /**
@@ -929,6 +945,35 @@ export interface PriceUpdate {
     time: number;
 }
 
+export interface LaunchpadLiquidity {
+    amount: number;
+    usd: number;
+}
+
+export interface Launchpad {
+    name: string;
+    url: string;
+    logo: string;
+    baseLiquidity: LaunchpadLiquidity;
+    quoteLiquidity: LaunchpadLiquidity;
+}
+
+export interface MeteoraCurveLiquidity {
+    base?: number;  // For baseLiquidity
+    quote?: number; // For quoteLiquidity
+    usd: number;
+}
+
+export interface MeteoraCurve {
+    baseLiquidity: MeteoraCurveLiquidity;
+    quoteLiquidity: MeteoraCurveLiquidity;
+    fee: number;
+    name?: string;  // Optional
+    url?: string;   // Optional
+    logo?: string;  // Optional
+}
+
+
 export interface PoolUpdate {
     liquidity: {
         quote: number;
@@ -963,8 +1008,13 @@ export interface PoolUpdate {
         total: number;
         volume: number;
         sells: number;
+        volume24h: number;  // Added the new field
     };
     bundleId?: string;
+    
+    // New fields for different market types
+    launchpad?: Launchpad;        // For raydium-launchpad market
+    meteoraCurve?: MeteoraCurve;  // For meteora-curve market
 }
 
 export interface HolderUpdate {
@@ -1022,4 +1072,15 @@ export interface TokenMetadata {
         telegram?: string;
         website?: string;
     };
+}
+
+export interface SniperInsiderUpdate {
+    wallet: string;
+    amount: string;  // raw_amount from the update
+    tokenAmount: number;
+    percentage: number;
+    previousAmount: number;
+    previousPercentage: number;
+    totalSniperPercentage: number;
+    totalInsiderPercentage: number;
 }

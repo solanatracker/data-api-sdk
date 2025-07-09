@@ -102,7 +102,7 @@ export async function searchTokens(query: string) {
       console.log(`   Price: $${token.priceUsd.toFixed(6)}`);
       console.log(`   Market Cap: $${(token.marketCapUsd / 1000000).toFixed(2)}M`);
       console.log(`   Liquidity: $${(token.liquidityUsd / 1000).toFixed(2)}k`);
-      console.log(`   Transactions: ${token.totalTransactions} (${token.totalBuys} buys, ${token.totalSells} sells)`);
+      console.log(`   Transactions: ${token.totalTransactions} (${token.buy} buys, ${token.sells} sells)`);
     });
     
     return results;
@@ -154,7 +154,8 @@ export async function getMultipleTokens() {
     
     console.log('\n=== Multiple Tokens Information ===');
     
-    tokens.forEach((token, index) => {
+    tokenAddresses.forEach((address, index) => {
+      const token = tokens.tokens[address];
       console.log(`\n${index+1}. ${token.token.name} (${token.token.symbol})`);
       
       if (token.pools.length > 0) {

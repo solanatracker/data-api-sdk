@@ -11,6 +11,7 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 - Real-time data streaming via WebSocket (Datastream)
 - Built-in error handling with specific error types
 - Compatible with both Node.js and browser environments
+- **NEW**: Snipers and insiders tracking via WebSocket
 
 ## Installation
 
@@ -112,6 +113,22 @@ dataStream.subscribe.curvePercentage('pumpfun', 30).on((data) => {
 dataStream.subscribe.curvePercentage('meteora-curve', 75).on((data) => {
   console.log(`Meteora token at 75%: ${data.token.name}`);
 });
+
+// Example 7: NEW - Monitor snipers for a token
+dataStream.subscribe.snipers(tokenAddress).on((sniperUpdate) => {
+  console.log(`Sniper wallet: ${sniperUpdate.wallet}`);
+  console.log(`Token amount: ${sniperUpdate.tokenAmount.toLocaleString()}`);
+  console.log(`Percentage: ${sniperUpdate.percentage.toFixed(2)}%`);
+  console.log(`Total snipers hold: ${sniperUpdate.totalSniperPercentage.toFixed(2)}%`);
+});
+
+// Example 8: NEW - Monitor insiders for a token
+dataStream.subscribe.insiders(tokenAddress).on((insiderUpdate) => {
+  console.log(`Insider wallet: ${insiderUpdate.wallet}`);
+  console.log(`Token amount: ${insiderUpdate.tokenAmount.toLocaleString()}`);
+  console.log(`Percentage: ${insiderUpdate.percentage.toFixed(2)}%`);
+  console.log(`Total insiders hold: ${insiderUpdate.totalInsiderPercentage.toFixed(2)}%`);
+});
 ```
 
 Available subscription methods:
@@ -142,6 +159,10 @@ dataStream.subscribe.holders(tokenAddress);     // Holder updates
 
 // Curve percentage updates
 dataStream.subscribe.curvePercentage(market, percentage); // Market options: 'launchpad', 'pumpfun', 'boop', 'meteora-curve'
+
+// NEW: Snipers and Insiders tracking
+dataStream.subscribe.snipers(tokenAddress);     // Track sniper wallets
+dataStream.subscribe.insiders(tokenAddress);    // Track insider wallets
 ```
 
 Each subscription method returns a response object with:
@@ -168,11 +189,15 @@ dataStream.on('error', (error) => console.error('Error:', error));
 dataStream.on('latest', (data) => console.log('New token:', data));
 dataStream.on(`price-by-token:${tokenAddress}`, (data) => console.log('Price update:', data));
 dataStream.on(`transaction:${tokenAddress}`, (data) => console.log('New transaction:', data));
+dataStream.on(`sniper:${tokenAddress}`, (data) => console.log('Sniper update:', data)); // NEW
+dataStream.on(`insider:${tokenAddress}`, (data) => console.log('Insider update:', data)); // NEW
 
 // New approach - Chain .on() directly to subscription
 dataStream.subscribe.latest().on((data) => console.log('New token:', data));
 dataStream.subscribe.price.token(tokenAddress).on((data) => console.log('Price update:', data));
 dataStream.subscribe.tx.token(tokenAddress).on((data) => console.log('Transaction:', data));
+dataStream.subscribe.snipers(tokenAddress).on((data) => console.log('Sniper:', data)); // NEW
+dataStream.subscribe.insiders(tokenAddress).on((data) => console.log('Insider:', data)); // NEW
 ```
 
 ## API Documentation
@@ -211,11 +236,12 @@ const searchResults = await client.searchTokens({
 // Get latest tokens
 const latestTokens = await client.getLatestTokens(100);
 
-// Get information about multiple tokens
+// Get information about multiple tokens (UPDATED: Now returns MultiTokensResponse)
 const multipleTokens = await client.getMultipleTokens([
   'So11111111111111111111111111111111111111112',
   '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
 ]);
+// Access tokens like: multipleTokens.tokens['tokenAddress']
 
 // Get trending tokens
 const trendingTokens = await client.getTrendingTokens('1h');
@@ -366,11 +392,18 @@ const poolStats = await client.getPoolStats('tokenAddress', 'poolAddress');
 // Get remaining API credits
 const credits = await client.getCredits();
 console.log('Remaining credits:', credits.credits);
+
+// NEW: Get subscription information
+const subscription = await client.getSubscription();
+console.log('Plan:', subscription.plan);
+console.log('Credits:', subscription.credits);
+console.log('Status:', subscription.status);
+console.log('Next billing date:', subscription.next_billing_date);
 ```
 
 ## Error Handling
 
-The library includes specific error types for robust error handling:
+The library includes specific error types for robust error handling with enhanced error details:
 
 ```typescript
 import { Client, DataApiError, RateLimitError, ValidationError } from '@solana-tracker/data-api';
@@ -384,12 +417,94 @@ try {
     console.error('Validation error:', error.message);
   } else if (error instanceof DataApiError) {
     console.error('API error:', error.message, 'Status:', error.status);
+    
+    // NEW: Access detailed error information
+    if (error.details) {
+      console.error('Error details:', error.details);
+    }
   } else {
     console.error('Unexpected error:', error);
   }
 }
 ```
 
+## What's New
+
+### Version Updates
+
+#### New Features:
+1. **Snipers and Insiders Tracking**: Monitor wallets that are identified as snipers or insiders for any token via WebSocket subscriptions
+2. **Enhanced Error Handling**: Error responses now include detailed error information from the API when available
+3. **Subscription Endpoint**: New endpoint to get subscription details including plan, credits, and billing information
+4. **Updated Type Definitions**:
+   - Added `volume24h` field to transaction statistics
+   - Enhanced `TokenRisk` interface with detailed snipers/insiders data
+   - Added `MultiTokensResponse` for the `/tokens/multi` endpoint
+   - Updated `Launchpad` and `MeteoraCurve` interfaces for finding the specific platform a token launched on (letsbonk.fun, moonshot etc.)
+   - Added `SubscriptionResponse` for subscription information
+
+#### Type Updates:
+```typescript
+// NEW: Subscription information
+interface SubscriptionResponse {
+  credits: number;
+  plan: string;
+  next_billing_date: string;
+  status: string;
+}
+
+// NEW: Sniper/Insider update structure
+interface SniperInsiderUpdate {
+  wallet: string;
+  amount: string;
+  tokenAmount: number;
+  percentage: number;
+  previousAmount: number;
+  previousPercentage: number;
+  totalSniperPercentage: number;
+  totalInsiderPercentage: number;
+}
+
+// UPDATED: Risk structure now includes detailed snipers/insiders
+interface TokenRisk {
+  snipers: {
+    count: number;
+    totalBalance: number;
+    totalPercentage: number;
+    wallets: Array<{
+      address: string;
+      balance: number;
+      percentage: number;
+    }>;
+  };
+  insiders: {
+    count: number;
+    totalBalance: number;
+    totalPercentage: number;
+    wallets: Array<{
+      address: string;
+      balance: number;
+      percentage: number;
+    }>;
+  };
+  top10: number;
+  rugged: boolean;
+  risks: TokenRiskFactor[];
+  score: number;
+  jupiterVerified?: boolean;
+}
+
+// NEW: Pool structures for different markets
+interface PoolInfo {
+  // ... existing fields ...
+  launchpad?: Launchpad;      // For raydium-launchpad market
+  meteoraCurve?: MeteoraCurve; // For meteora-curve market
+  txns?: {
+    // ... existing fields ...
+    volume24h: number;         // NEW field
+  };
+}
+```
 
 ## WebSocket Data Stream
 
@@ -419,6 +534,8 @@ dataStream.on(`metadata:${tokenAddress}`, (data) => console.log('Metadata update
 dataStream.on(`holders:${tokenAddress}`, (data) => console.log('Holders update:', data));
 dataStream.on(`token:${tokenAddress}`, (data) => console.log('Token update:', data));
 dataStream.on(`pool:${poolId}`, (data) => console.log('Pool update:', data));
+dataStream.on(`sniper:${tokenAddress}`, (data) => console.log('Sniper update:', data)); // NEW
+dataStream.on(`insider:${tokenAddress}`, (data) => console.log('Insider update:', data)); // NEW
 ```
 
 ### Connection Management

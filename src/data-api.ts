@@ -1,5 +1,6 @@
 import {
   TokenDetailResponse,
+  MultiTokensResponse,
   TokenHoldersResponse,
   TopHolder,
   AthPrice,
@@ -26,35 +27,39 @@ import {
   CreditsResponse,
   WalletTradesResponse,
   ProcessedEvent,
+  SubscriptionResponse
 } from './interfaces';
 
 import { decodeBinaryEvents } from './event-processor';
 
 export class DataApiError extends Error {
+  public details?: any;
+
   constructor(
     message: string,
     public status?: number,
-    public code?: string
+    public code?: string,
+    details?: any
   ) {
     super(message);
     this.name = 'DataApiError';
+    this.details = details;
   }
 }
 
 export class RateLimitError extends DataApiError {
-  constructor(message: string, public retryAfter?: number) {
-    super(message, 429, 'RATE_LIMIT_EXCEEDED');
+  constructor(message: string, public retryAfter?: number, details?: any) {
+    super(message, 429, 'RATE_LIMIT_EXCEEDED', details);
     this.name = 'RateLimitError';
   }
 }
 
 export class ValidationError extends DataApiError {
-  constructor(message: string) {
-    super(message, 400, 'VALIDATION_ERROR');
+  constructor(message: string, details?: any) {
+    super(message, 400, 'VALIDATION_ERROR', details);
     this.name = 'ValidationError';
   }
 }
-
 /**
  * Config options for the Solana Tracker Data API
  */
@@ -109,20 +114,71 @@ export class Client {
       });
 
       if (!response.ok) {
+        // Default error message
+        let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
+        let errorDetails: any = null;
+
+        try {
+          // Attempt to parse error response as JSON
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            errorDetails = await response.json();
+
+            // Extract error message from various possible fields
+            if (typeof errorDetails === 'string') {
+              errorMessage = errorDetails;
+            } else if (errorDetails && typeof errorDetails === 'object') {
+              // Try different common error message fields
+              if (typeof errorDetails.message === 'string') {
+                errorMessage = errorDetails.message;
+              } else if (typeof errorDetails.error === 'string') {
+                errorMessage = errorDetails.error;
+              } else if (typeof errorDetails.detail === 'string') {
+                errorMessage = errorDetails.detail;
+              } else if (typeof errorDetails.msg === 'string') {
+                errorMessage = errorDetails.msg;
+              } else if (errorDetails.error && typeof errorDetails.error === 'object') {
+                // If error is an object, try to extract message from it
+                if (typeof errorDetails.error.message === 'string') {
+                  errorMessage = errorDetails.error.message;
+                } else if (typeof errorDetails.error.detail === 'string') {
+                  errorMessage = errorDetails.error.detail;
+                } else {
+                  // If we can't find a string message, stringify the error object
+                  errorMessage = `API error: ${JSON.stringify(errorDetails.error)}`;
+                }
+              } else {
+                // Last resort: stringify the entire error response
+                errorMessage = `API error: ${JSON.stringify(errorDetails)}`;
+              }
+            }
+          }
+        } catch (parseError) {
+          // If parsing fails, we'll use the default error message
+          console.error('Failed to parse error response:', parseError);
+        }
+
+        // Handle specific error codes
         if (response.status === 429) {
           const retryAfter = response.headers.get('Retry-After');
-          if (options?.disableLogs) {
+          if (!options?.disableLogs) {
             console.warn(`Rate limit exceeded for ${endpoint}. Retry after: ${retryAfter || '1'} seconds`);
           }
-          throw new RateLimitError(
-            'Rate limit exceeded',
-            retryAfter ? parseInt(retryAfter) : undefined
-          );
+          const error = new RateLimitError(errorMessage, retryAfter ? parseInt(retryAfter) : undefined);
+          // Attach error details if available
+          if (errorDetails) {
+            (error as any).details = errorDetails;
+          }
+          throw error;
         }
-        throw new DataApiError(
-          `API request failed: ${response.status} ${response.statusText}`,
-          response.status
-        );
+
+        // For all other errors (including 500)
+        const error = new DataApiError(errorMessage, response.status);
+        // Attach error details if available
+        if (errorDetails) {
+          (error as any).details = errorDetails;
+        }
+        throw error;
       }
 
       return response.json() as Promise<T>;
@@ -130,7 +186,8 @@ export class Client {
       if (error instanceof DataApiError) {
         throw error;
       }
-      throw new DataApiError('An unexpected error occurred');
+      // For network errors or other unexpected errors
+      throw new DataApiError(`An unexpected error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -254,12 +311,12 @@ export class Client {
    * @param tokenAddresses Array of token addresses
    * @returns Information about multiple tokens
    */
-  async getMultipleTokens(tokenAddresses: string[]): Promise<TokenDetailResponse[]> {
+  async getMultipleTokens(tokenAddresses: string[]): Promise<MultiTokensResponse> {
     if (tokenAddresses.length > 20) {
       throw new ValidationError('Maximum of 20 tokens per request');
     }
     tokenAddresses.forEach((addr) => this.validatePublicKey(addr, 'tokenAddress'));
-    return this.request<TokenDetailResponse[]>('/tokens/multi', {
+    return this.request<MultiTokensResponse>('/tokens/multi', {
       method: 'POST',
       body: JSON.stringify({ tokens: tokenAddresses }),
     });
@@ -812,6 +869,14 @@ export class Client {
     this.validatePublicKey(tokenAddress, 'tokenAddress');
     this.validatePublicKey(poolAddress, 'poolAddress');
     return this.request<TokenStats>(`/stats/${tokenAddress}/${poolAddress}`);
+  }
+
+  /**
+ * Get current subscription information including credits, plan, and billing details
+ * @returns Subscription information
+ */
+  async getSubscription(): Promise<SubscriptionResponse> {
+    return this.request<SubscriptionResponse>('/subscription');
   }
 
   /**

@@ -36,14 +36,63 @@ export interface TokenSecurity {
 
 export interface TokenPoolTxns {
   buys: number;
+  sells: number;
   total: number;
   volume: number;
-  sells: number;
+  volume24h: number;  // New field
 }
+
 
 export interface TokenValuePair {
   quote: number;
   usd: number;
+}
+
+export interface LaunchpadLiquidity {
+    amount: number;
+    usd: number;
+}
+
+export interface Launchpad {
+    name: string;
+    url: string;
+    logo: string;
+    baseLiquidity: LaunchpadLiquidity;
+    quoteLiquidity: LaunchpadLiquidity;
+}
+
+export interface MeteoraCurveLiquidity {
+    base?: number;  // For baseLiquidity
+    quote?: number; // For quoteLiquidity
+    usd: number;
+}
+
+export interface MeteoraCurve {
+    baseLiquidity: MeteoraCurveLiquidity;
+    quoteLiquidity: MeteoraCurveLiquidity;
+    fee: number;
+    name?: string;  // Optional
+    url?: string;   // Optional
+    logo?: string;  // Optional
+}
+
+export interface RiskWallet {
+  address: string;
+  balance: number;
+  percentage: number;
+}
+
+export interface RiskCategory {
+  count: number;
+  totalBalance: number;
+  totalPercentage: number;
+  wallets: RiskWallet[];
+}
+
+export interface MultiTokensResponse {
+  tokens: {
+    [tokenAddress: string]: TokenDetailResponse;
+  };
 }
 
 export interface PoolInfo {
@@ -60,11 +109,13 @@ export interface PoolInfo {
   security: TokenSecurity;
   lastUpdated: number;
   deployer?: string;
-  txns?: TokenPoolTxns;
+  txns?: TokenPoolTxns;  // Now includes volume24h
   curvePercentage?: number;
   curve?: string;
   createdAt?: number;
   bundleId?: string;
+  launchpad?: Launchpad;
+  meteoraCurve?: MeteoraCurve;
 }
 
 export interface PriceChangeData {
@@ -87,6 +138,9 @@ export interface TokenEvents {
 }
 
 export interface TokenRisk {
+  snipers: RiskCategory;
+  insiders: RiskCategory;
+  top10: number;
   rugged: boolean;
   risks: TokenRiskFactor[];
   score: number;
@@ -652,4 +706,9 @@ export interface ProcessedEvent {
   time: number;
 }
 
-
+export interface SubscriptionResponse {
+  credits: number;
+  plan: string;
+  next_billing_date: string;
+  status: string;
+}

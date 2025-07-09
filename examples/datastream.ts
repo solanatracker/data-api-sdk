@@ -11,6 +11,7 @@ const dataStream = new Datastream({
   useWorker: true, // Use Web Worker for background processing (default: false)
 });
 
+
 // ************************************
 // Basic connection management examples
 // ************************************
@@ -60,8 +61,8 @@ const WALLET_ADDRESS = 'YourWalletAddressHere'; // Replace with actual wallet ad
 const subscribeToLatest = () => {
   const subscription = dataStream.subscribe.latest().on((data) => {
     console.log('Latest token/pool update:', data);
-    console.log(`Token: ${data.tokenAddress}`);
-    console.log(`Market Cap: $${data.marketCap?.usd.toLocaleString()}`);
+    console.log(`Token: ${data.pools[0].tokenAddress}`);
+    console.log(`Market Cap: $${data.pools[0].marketCap?.usd.toLocaleString()}`);
   });
 
   return subscription; // Contains unsubscribe() method
@@ -71,8 +72,8 @@ const subscribeToLatest = () => {
 const subscribeToGraduating = (marketCapThresholdSOL?: number) => {
   const subscription = dataStream.subscribe.graduating(marketCapThresholdSOL).on((data) => {
     console.log('Graduating token:', data);
-    console.log(`Token: ${data.tokenAddress}`);
-    console.log(`Market Cap: $${data.marketCap?.usd.toLocaleString()}`);
+    console.log(`Token: ${data.pools[0].tokenAddress}`);
+    console.log(`Market Cap: $${data.pools[0].marketCap?.usd.toLocaleString()}`);
   });
 
   return subscription;
@@ -82,8 +83,8 @@ const subscribeToGraduating = (marketCapThresholdSOL?: number) => {
 const subscribeToGraduated = () => {
   const subscription = dataStream.subscribe.graduated().on((data) => {
     console.log('Graduated token:', data);
-    console.log(`Token: ${data.tokenAddress}`);
-    console.log(`Market Cap: $${data.marketCap?.usd.toLocaleString()}`);
+    console.log(`Token: ${data.pools[0].tokenAddress}`);
+    console.log(`Market Cap: $${data.pools[0].marketCap?.usd.toLocaleString()}`);
   });
 
   return subscription;
@@ -252,6 +253,42 @@ const subscribeToPumpFunCurvePercentage = () => {
 }
 
 
+const subscribeToSnipers = (tokenAddress: string = TOKEN_ADDRESS) => {
+  dataStream.subscribe.latest().on((data) => {
+    const subscription = dataStream.subscribe.snipers(data.pools[0].tokenAddress).on((data) => {
+      console.log('Sniper update:');
+      console.log(`Wallet: ${data.wallet}`);
+      console.log(`Token Amount: ${data.tokenAmount.toLocaleString()}`);
+      console.log(`Percentage: ${data.percentage.toFixed(2)}%`);
+      console.log(`Previous Amount: ${data.previousAmount.toLocaleString()}`);
+      console.log(`Previous Percentage: ${data.previousPercentage.toFixed(2)}%`);
+      console.log(`Total Sniper Percentage: ${data.totalSniperPercentage.toFixed(2)}%`);
+      console.log(`Total Insider Percentage: ${data.totalInsiderPercentage.toFixed(2)}%`);
+      console.log('---');
+    });
+  });
+
+};
+
+
+// Subscribe to insider updates for a token
+const subscribeToInsiders = (tokenAddress: string = TOKEN_ADDRESS) => {
+  dataStream.subscribe.latest().on((data) => {
+    const subscription = dataStream.subscribe.insiders(data.pools[0].tokenAddress).on((data) => {
+      console.log('Insider update:');
+      console.log(`Wallet: ${data.wallet}`);
+      console.log(`Token Amount: ${data.tokenAmount.toLocaleString()}`);
+      console.log(`Percentage: ${data.percentage.toFixed(2)}%`);
+      console.log(`Previous Amount: ${data.previousAmount.toLocaleString()}`);
+      console.log(`Previous Percentage: ${data.previousPercentage.toFixed(2)}%`);
+      console.log(`Total Sniper Percentage: ${data.totalSniperPercentage.toFixed(2)}%`);
+      console.log(`Total Insider Percentage: ${data.totalInsiderPercentage.toFixed(2)}%`);
+      console.log('---');
+    });
+  });
+
+};
+
 
 // ************************************
 // Example execution
@@ -261,6 +298,8 @@ const subscribeToPumpFunCurvePercentage = () => {
 // or call the functions in your application
 
 // subscribeToLatest();
+// subscribeToSnipers();
+// subscribeToInsiders();
 // subscribeToGraduating();
 // subscribeToGraduated();
 // subscribeToMetadata(TOKEN_ADDRESS);
