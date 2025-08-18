@@ -11,9 +11,11 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 - Real-time data streaming via WebSocket (Datastream)
 - Built-in error handling with specific error types
 - Compatible with both Node.js and browser environments
+- **NEW**: Live stats subscriptions for tokens and pools
+- **NEW**: Primary pool subscriptions for token updates
+- **NEW**: Improved wallet balance subscription API
 - **NEW**: Snipers and insiders tracking via WebSocket 
 - **NEW**: Enhanced error details for better debugging
-- **NEW**: Subscribe to Wallet Balance updates
 - Support for all pool types including launchpad and meteora curve pools (Shows which platform token is released on, Moonshot, Bonk, Jupiter Studio etc)
 
 ## Installation
@@ -57,7 +59,7 @@ fetchTokenInfo();
 The library includes a `Datastream` class for real-time data updates with an improved, intuitive API:
 
 ```typescript
-import { Datastream } from '@solanatracker/data-api';
+import { Datastream } from '@solana-tracker/data-api';
 
 // Initialize the Datastream with your API key
 const dataStream = new Datastream({
@@ -133,19 +135,71 @@ dataStream.subscribe.insiders(tokenAddress).on((insiderUpdate) => {
   console.log(`Total insiders hold: ${insiderUpdate.totalInsiderPercentage.toFixed(2)}%`);
 });
 
-// Example 9: NEW - Monitor wallet balance changes
+// Example 9: NEW - Monitor wallet balance changes (new API location)
 const walletAddress = 'YourWalletAddressHere';
 
 // Watch all token balance changes for a wallet
-dataStream.subscribe.tx.wallet(walletAddress).balance().on((balanceUpdate) => {
+dataStream.subscribe.wallet(walletAddress).balance().on((balanceUpdate) => {
   console.log(`Balance update for wallet ${balanceUpdate.wallet}`);
   console.log(`Token: ${balanceUpdate.token}`);
   console.log(`New balance: ${balanceUpdate.amount}`);
 });
 
 // Watch specific token balance for a wallet
-dataStream.subscribe.tx.wallet(walletAddress).tokenBalance('tokenMint').on((balanceUpdate) => {
+dataStream.subscribe.wallet(walletAddress).tokenBalance('tokenMint').on((balanceUpdate) => {
   console.log(`Token balance changed to: ${balanceUpdate.amount}`);
+});
+
+// Example 10: NEW - Subscribe to primary pool updates for a token
+dataStream.subscribe.token(tokenAddress).primary().on((poolUpdate) => {
+  console.log('Primary pool update:');
+  console.log(`Price: $${poolUpdate.price.usd}`);
+  console.log(`Liquidity: $${poolUpdate.liquidity.usd}`);
+  console.log(`Market Cap: $${poolUpdate.marketCap.usd}`);
+});
+
+// Can also subscribe to all pools (default behavior)
+dataStream.subscribe.token(tokenAddress).all().on((poolUpdate) => {
+  console.log(`Pool ${poolUpdate.poolId} updated`);
+});
+
+// Example 11: NEW - Subscribe to live stats for tokens and pools
+// Get real-time statistics across all timeframes (1m, 5m, 15m, 30m, 1h, 4h, 24h)
+dataStream.subscribe.stats.token(tokenAddress).on((stats) => {
+  console.log('Live token stats update:');
+  
+  // Access specific timeframe stats
+  if (stats['24h']) {
+    console.log('24h Stats:');
+    console.log(`  Volume: $${stats['24h'].volume.total.toLocaleString()}`);
+    console.log(`  Buys: ${stats['24h'].buys}, Sells: ${stats['24h'].sells}`);
+    console.log(`  Unique wallets: ${stats['24h'].wallets}`);
+    console.log(`  Price change: ${stats['24h'].priceChangePercentage.toFixed(2)}%`);
+  }
+  
+  if (stats['1h']) {
+    console.log('1h Stats:');
+    console.log(`  Buyers: ${stats['1h'].buyers}, Sellers: ${stats['1h'].sellers}`);
+    console.log(`  Buy volume: $${stats['1h'].volume.buys.toLocaleString()}`);
+    console.log(`  Sell volume: $${stats['1h'].volume.sells.toLocaleString()}`);
+  }
+  
+  // Iterate through all available timeframes
+  Object.entries(stats).forEach(([timeframe, data]) => {
+    console.log(`${timeframe}: ${data.transactions} txns, ${data.wallets} wallets`);
+  });
+});
+
+// Subscribe to live stats for a specific pool
+dataStream.subscribe.stats.pool('poolId').on((stats) => {
+  console.log('Pool stats update:');
+  
+  if (stats['5m']) {
+    console.log('Last 5 minutes:');
+    console.log(`  Transactions: ${stats['5m'].transactions}`);
+    console.log(`  Volume: $${stats['5m'].volume.total.toLocaleString()}`);
+    console.log(`  Price: $${stats['5m'].price}`);
+  }
 });
 ```
 
@@ -153,43 +207,67 @@ Available subscription methods:
 
 ```typescript
 // Token and pool updates
-dataStream.subscribe.latest();                  // Latest tokens and pools
-dataStream.subscribe.token(tokenAddress);       // Token changes (any pool)
-dataStream.subscribe.pool(poolId);              // Pool changes
+dataStream.subscribe.latest();                          // Latest tokens and pools
+dataStream.subscribe.token(tokenAddress);               // Token changes (all pools - default)
+dataStream.subscribe.token(tokenAddress).all();         // Token changes (all pools - explicit)
+dataStream.subscribe.token(tokenAddress).primary();     // Token changes (primary pool only) - NEW
+dataStream.subscribe.pool(poolId);                      // Pool changes
 
 // Price updates
-dataStream.subscribe.price.token(tokenAddress); // Token price (main pool)
+dataStream.subscribe.price.token(tokenAddress);         // Token price (main pool)
 dataStream.subscribe.price.allPoolsForToken(tokenAddress); // All price updates for a token
-dataStream.subscribe.price.pool(poolId);        // Pool price
+dataStream.subscribe.price.pool(poolId);                // Pool price
 
 // Transactions
-dataStream.subscribe.tx.token(tokenAddress);    // Token transactions
-dataStream.subscribe.tx.pool(tokenAddress, poolId); // Pool transactions
-dataStream.subscribe.tx.wallet(walletAddress);  // Wallet transactions (deprecated: use .transactions())
-dataStream.subscribe.tx.wallet(walletAddress).transactions(); // Wallet transactions (new)
-dataStream.subscribe.tx.wallet(walletAddress).balance();      // All token balance changes
-dataStream.subscribe.tx.wallet(walletAddress).tokenBalance(tokenAddress); // Specific token balance
+dataStream.subscribe.tx.token(tokenAddress);            // Token transactions
+dataStream.subscribe.tx.pool(tokenAddress, poolId);     // Pool transactions
+dataStream.subscribe.tx.wallet(walletAddress);          // Wallet transactions
+
+// Wallet balance updates (NEW location)
+dataStream.subscribe.wallet(walletAddress).balance();   // All token balance changes
+dataStream.subscribe.wallet(walletAddress).tokenBalance(tokenAddress); // Specific token balance
+
+// Live statistics (NEW)
+dataStream.subscribe.stats.token(tokenAddress);         // Live stats for a token
+dataStream.subscribe.stats.pool(poolId);                // Live stats for a pool
 
 // Pump.fun stages
-dataStream.subscribe.graduating();              // Graduating tokens
-dataStream.subscribe.graduated();               // Graduated tokens
+dataStream.subscribe.graduating();                      // Graduating tokens
+dataStream.subscribe.graduated();                       // Graduated tokens
 
 // Metadata and holders
-dataStream.subscribe.metadata(tokenAddress);    // Token metadata
-dataStream.subscribe.holders(tokenAddress);     // Holder updates
+dataStream.subscribe.metadata(tokenAddress);            // Token metadata
+dataStream.subscribe.holders(tokenAddress);             // Holder updates
 
 // Curve percentage updates
 dataStream.subscribe.curvePercentage(market, percentage); // Market options: 'launchpad', 'pumpfun', 'boop', 'meteora-curve'
 
-// NEW: Snipers and Insiders tracking
-dataStream.subscribe.snipers(tokenAddress);     // Track sniper wallets
-dataStream.subscribe.insiders(tokenAddress);    // Track insider wallets
+// Snipers and Insiders tracking
+dataStream.subscribe.snipers(tokenAddress);             // Track sniper wallets
+dataStream.subscribe.insiders(tokenAddress);            // Track insider wallets
 ```
 
 Each subscription method returns a response object with:
 - `room`: The subscription channel name
 - `on()`: Method to attach a listener with proper TypeScript types
   - Returns an object with `unsubscribe()` method for easy cleanup
+
+### Migration Guide for Balance Updates
+
+The wallet balance subscriptions have been moved to a more intuitive location:
+
+```typescript
+// OLD (deprecated - will show warning)
+dataStream.subscribe.tx.wallet(walletAddress).balance().on(callback);
+dataStream.subscribe.tx.wallet(walletAddress).tokenBalance(tokenAddress).on(callback);
+
+// NEW (recommended)
+dataStream.subscribe.wallet(walletAddress).balance().on(callback);
+dataStream.subscribe.wallet(walletAddress).tokenBalance(tokenAddress).on(callback);
+
+// Note: Wallet transactions remain under .tx namespace
+dataStream.subscribe.tx.wallet(walletAddress).on(callback); // Still the correct way for transactions
+```
 
 ## WebSocket Data Stream
 
@@ -210,15 +288,21 @@ dataStream.on('error', (error) => console.error('Error:', error));
 dataStream.on('latest', (data) => console.log('New token:', data));
 dataStream.on(`price-by-token:${tokenAddress}`, (data) => console.log('Price update:', data));
 dataStream.on(`transaction:${tokenAddress}`, (data) => console.log('New transaction:', data));
-dataStream.on(`sniper:${tokenAddress}`, (data) => console.log('Sniper update:', data)); // NEW
-dataStream.on(`insider:${tokenAddress}`, (data) => console.log('Insider update:', data)); // NEW
+dataStream.on(`token:${tokenAddress}`, (data) => console.log('Token update (all pools):', data));
+dataStream.on(`token:${tokenAddress}:primary`, (data) => console.log('Token update (primary pool):', data)); // NEW
+dataStream.on(`sniper:${tokenAddress}`, (data) => console.log('Sniper update:', data));
+dataStream.on(`insider:${tokenAddress}`, (data) => console.log('Insider update:', data));
+dataStream.on(`stats:token:${tokenAddress}`, (data) => console.log('Token stats:', data)); // NEW
+dataStream.on(`stats:pool:${poolId}`, (data) => console.log('Pool stats:', data)); // NEW
 
 // New approach - Chain .on() directly to subscription
 dataStream.subscribe.latest().on((data) => console.log('New token:', data));
 dataStream.subscribe.price.token(tokenAddress).on((data) => console.log('Price update:', data));
 dataStream.subscribe.tx.token(tokenAddress).on((data) => console.log('Transaction:', data));
-dataStream.subscribe.snipers(tokenAddress).on((data) => console.log('Sniper:', data)); // NEW
-dataStream.subscribe.insiders(tokenAddress).on((data) => console.log('Insider:', data)); // NEW
+dataStream.subscribe.snipers(tokenAddress).on((data) => console.log('Sniper:', data));
+dataStream.subscribe.insiders(tokenAddress).on((data) => console.log('Insider:', data));
+dataStream.subscribe.stats.token(tokenAddress).on((data) => console.log('Stats:', data)); // NEW
+dataStream.subscribe.stats.pool(poolId).on((data) => console.log('Pool stats:', data)); // NEW
 ```
 
 ## API Documentation
@@ -349,11 +433,41 @@ const userTokenTrades = await client.getUserTokenTrades('tokenAddress', 'walletA
 ### Chart Endpoints
 
 ```typescript
-// Get OHLCV data for a token
-const chartData = await client.getChartData('tokenAddress', '1h', 1690000000, 1695000000);
+// Get OHLCV data for a token - NEW: Now supports object syntax
+// Method 1: Object syntax (recommended for multiple parameters)
+const chartData = await client.getChartData({
+  tokenAddress: 'tokenAddress',
+  type: '1h',
+  timeFrom: 1690000000,
+  timeTo: 1695000000,
+  marketCap: false,
+  removeOutliers: true,
+  dynamicPools: true,      // NEW: Dynamic pool selection
+  timezone: 'current',     // NEW: Use current timezone or specify like 'America/New_York'
+  fastCache: true         // NEW: Enable fast cache for better performance
+});
+
+// Method 2: Traditional syntax (still supported)
+const chartData = await client.getChartData(
+  'tokenAddress', 
+  '1h', 
+  1690000000, 
+  1695000000,
+  false,      // marketCap
+  true,       // removeOutliers  
+  true,       // dynamicPools
+  'current',  // timezone
+  true        // fastCache
+);
 
 // Get OHLCV data for a specific token and pool
-const poolChartData = await client.getPoolChartData('tokenAddress', 'poolAddress', '15m');
+const poolChartData = await client.getPoolChartData({
+  tokenAddress: 'tokenAddress',
+  poolAddress: 'poolAddress',
+  type: '15m',
+  timezone: 'UTC',
+  fastCache: false
+});
 
 // Get holder count chart data
 const holdersChart = await client.getHoldersChart('tokenAddress', '1d');
@@ -368,8 +482,15 @@ const walletPnL = await client.getWalletPnL('walletAddress', true, true, false);
 // Get the first 100 buyers of a token with PnL data
 const firstBuyers = await client.getFirstBuyers('tokenAddress');
 
-// Get PnL data for a specific token in a wallet
-const tokenPnL = await client.getTokenPnL('walletAddress', 'tokenAddress');
+// Get PnL data for a specific token in a wallet - NEW: holdingCheck parameter
+const tokenPnL = await client.getTokenPnL('walletAddress', 'tokenAddress', true);
+
+// Can also use object syntax
+const tokenPnL = await client.getTokenPnL({
+  wallet: 'walletAddress',
+  tokenAddress: 'tokenAddress',
+  holdingCheck: true
+});
 ```
 
 ### Top Traders Endpoints
@@ -454,19 +575,69 @@ try {
 ### Version Updates
 
 #### New Features:
-1. **Snipers and Insiders Tracking**: Monitor wallets that are identified as snipers or insiders for any token via WebSocket subscriptions
-2. **Wallet Balance Tracking**: Real-time monitoring of token balance changes for any wallet via WebSocket
-3. **Enhanced Error Handling**: Error responses now include detailed error information from the API when available
-4. **Subscription Endpoint**: New endpoint to get subscription details including plan, credits, and billing information
-5. **Updated Type Definitions**:
-   - Added `volume24h` field to transaction statistics
-   - Enhanced `TokenRisk` interface with detailed snipers/insiders data
-   - Added `MultiTokensResponse` for the `/tokens/multi` endpoint
-   - Updated `Launchpad` and `MeteoraCurve` interfaces for pool-specific data (Shows which platform token is released on, Moonshot, Bonk, Jupiter Studio etc)
-   - Added `SubscriptionResponse` for subscription information
+1. **Live Stats Subscriptions**: Subscribe to real-time statistics for tokens and pools across all timeframes (1m, 5m, 15m, 30m, 1h, 4h, 24h) using `.stats.token()` and `.stats.pool()` methods
+2. **Primary Pool Subscriptions**: Subscribe to only the primary pool for a token using `.primary()` method
+3. **Improved Wallet Balance API**: Wallet balance subscriptions moved to top-level `datastream.subscribe.wallet()` for better organization
+4. **Enhanced Chart Parameters**: 
+   - `dynamicPools`: Automatically select the best pool over time for consistent charts
+   - `timezone`: Support for timezone-aware charts (use 'current' or specify timezone)
+   - `fastCache`: Enable fast caching for improved performance
+5. **Object Syntax for Chart Functions**: Cleaner API for functions with multiple parameters
+6. **Snipers and Insiders Tracking**: Monitor wallets that are identified as snipers or insiders for any token via WebSocket subscriptions
+7. **Enhanced Error Handling**: Error responses now include detailed error information from the API when available
+8. **Subscription Endpoint**: New endpoint to get subscription details including plan, credits, and billing information
 
 #### Type Updates:
 ```typescript
+// NEW: TimeframeStats interface for live statistics
+interface TimeframeStats {
+  buyers: number;
+  sellers: number;
+  volume: {
+    buys: number;
+    sells: number;
+    total: number;
+  };
+  transactions: number;
+  buys: number;
+  sells: number;
+  wallets: number;
+  price: number;
+  priceChangePercentage: number;
+}
+
+// NEW: TokenStats interface for aggregated timeframe statistics
+interface TokenStats {
+  "1m"?: TimeframeStats;
+  "5m"?: TimeframeStats;
+  "15m"?: TimeframeStats;
+  "30m"?: TimeframeStats;
+  "1h"?: TimeframeStats;
+  "4h"?: TimeframeStats;
+  "24h"?: TimeframeStats;
+}
+
+// NEW: Chart data parameters interface
+interface ChartDataParams {
+  tokenAddress: string;
+  poolAddress?: string;  // For pool-specific charts
+  type?: string;
+  timeFrom?: number;
+  timeTo?: number;
+  marketCap?: boolean;
+  removeOutliers?: boolean;
+  dynamicPools?: boolean;
+  timezone?: string | 'current';
+  fastCache?: boolean;
+}
+
+// NEW: Token PnL parameters interface
+interface TokenPnLParams {
+  wallet: string;
+  tokenAddress: string;
+  holdingCheck?: boolean;
+}
+
 // NEW: Subscription information
 interface SubscriptionResponse {
   credits: number;
@@ -535,11 +706,7 @@ interface PoolInfo {
 }
 ```
 
-## WebSocket Data Stream
-
-The `Datastream` class provides real-time access to Solana Tracker data:
-
-### Events
+## WebSocket Data Stream Events
 
 The Datastream extends the standard EventEmitter interface, allowing you to listen for various events:
 
@@ -557,16 +724,19 @@ dataStream.on(`price:${tokenAddress}`, (data) => console.log('Price update:', da
 dataStream.on(`price:${poolAddress}`, (data) => console.log('Price update:', data));
 dataStream.on(`transaction:${tokenAddress}`, (data) => console.log('New transaction:', data));
 dataStream.on(`wallet:${walletAddress}`, (data) => console.log('Wallet transaction:', data));
-dataStream.on(`wallet:${walletAddress}:balance`, (data) => console.log('Wallet balance update:', data)); // NEW
-dataStream.on(`wallet:${walletAddress}:${tokenAddress}:balance`, (data) => console.log('Token balance update:', data)); // NEW
+dataStream.on(`wallet:${walletAddress}:balance`, (data) => console.log('Wallet balance update:', data));
+dataStream.on(`wallet:${walletAddress}:${tokenAddress}:balance`, (data) => console.log('Token balance update:', data));
 dataStream.on('graduating', (data) => console.log('Graduating token:', data));
 dataStream.on('graduated', (data) => console.log('Graduated token:', data));
 dataStream.on(`metadata:${tokenAddress}`, (data) => console.log('Metadata update:', data));
 dataStream.on(`holders:${tokenAddress}`, (data) => console.log('Holders update:', data));
-dataStream.on(`token:${tokenAddress}`, (data) => console.log('Token update:', data));
+dataStream.on(`token:${tokenAddress}`, (data) => console.log('Token update (all pools):', data));
+dataStream.on(`token:${tokenAddress}:primary`, (data) => console.log('Token update (primary pool):', data)); // NEW
 dataStream.on(`pool:${poolId}`, (data) => console.log('Pool update:', data));
-dataStream.on(`sniper:${tokenAddress}`, (data) => console.log('Sniper update:', data)); // NEW
-dataStream.on(`insider:${tokenAddress}`, (data) => console.log('Insider update:', data)); // NEW
+dataStream.on(`sniper:${tokenAddress}`, (data) => console.log('Sniper update:', data));
+dataStream.on(`insider:${tokenAddress}`, (data) => console.log('Insider update:', data));
+dataStream.on(`stats:token:${tokenAddress}`, (data) => console.log('Token stats:', data)); // NEW
+dataStream.on(`stats:pool:${poolId}`, (data) => console.log('Pool stats:', data)); // NEW
 ```
 
 ### Connection Management
@@ -589,7 +759,6 @@ Solana Tracker offers a range of subscription plans with varying rate limits:
 | Plan            | Price         | Requests/Month | Rate Limit |
 |-----------------|---------------|----------------|------------|
 | Free            | Free          | 10,000         | 1/second   |
-| Starter         | €14.99/month  | 50,000         | None       |
 | Advanced        | €50/month     | 200,000        | None       |
 | Pro             | €200/month    | 1,000,000      | None       |
 | Premium         | €397/month    | 10,000,000     | None       |

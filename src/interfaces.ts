@@ -718,3 +718,27 @@ export interface WalletBalanceUpdate {
   token: string;
   amount: number;
 }
+
+export interface ChartDataParams {
+  /** Token address */
+  tokenAddress: string;
+  /** Pool address (only for pool-specific charts) */
+  poolAddress?: string;
+  /** Time interval (e.g., "1s", "1m", "1h", "1d") */
+  type?: string;
+  /** Start time (Unix timestamp in seconds) */
+  timeFrom?: number;
+  /** End time (Unix timestamp in seconds) */
+  timeTo?: number;
+  /** Return chart for market cap instead of pricing */
+  marketCap?: boolean;
+  /** Disable outlier removal if set to false (default: true) */
+  removeOutliers?: boolean;
+  /** Dynamically picks the main pool over time for consistent charts (default: true, only applies without pool) */
+  dynamicPools?: boolean;
+  /** Timezone for chart data - use "current" for auto-detection or specify timezone (e.g., "PST", "UTC", "America/New_York") */
+  timezone?: string | 'current';
+  /** Enable live cache for faster response times (default: false) */
+  fastCache?: boolean;
+}
+

@@ -1,5 +1,5 @@
 // examples/datastream.ts
-import { Datastream } from '@solanatracker/data-api';
+import { Datastream } from '@solana-tracker/data-api';
 
 // Initialize the Datastream with configuration
 const dataStream = new Datastream({

@@ -27,7 +27,8 @@ import {
   CreditsResponse,
   WalletTradesResponse,
   ProcessedEvent,
-  SubscriptionResponse
+  SubscriptionResponse,
+  ChartDataParams
 } from './interfaces';
 
 import { decodeBinaryEvents } from './event-processor';
@@ -372,6 +373,14 @@ export class Client {
     return this.request<TokenDetailResponse[]>('/tokens/multi/graduated');
   }
 
+  /**
+  * Get graduated tokens
+  * @returns List of graduated tokens
+  */
+  async getGraduatingTokens(): Promise<TokenDetailResponse[]> {
+    return this.request<TokenDetailResponse[]>('/tokens/multi/graduating');
+  }
+
   // ======== PRICE ENDPOINTS ========
 
   /**
@@ -675,23 +684,50 @@ export class Client {
   // ======== CHART DATA ENDPOINTS ========
 
   /**
-   * Get OHLCV data for a token
-   * @param tokenAddress Token address
-   * @param type Time interval (e.g., "1s", "1m", "1h", "1d")
-   * @param timeFrom Start time (Unix timestamp in seconds)
-   * @param timeTo End time (Unix timestamp in seconds)
-   * @param marketCap Return chart for market cap instead of pricing
-   * @param removeOutliers Disable outlier removal if set to false (default: true)
-   * @returns OHLCV chart data
-   */
+  * Get OHLCV data for a token
+  * @param params Chart parameters as an object or individual parameters
+  * @returns OHLCV chart data
+  */
+  async getChartData(params: ChartDataParams): Promise<ChartResponse>;
   async getChartData(
     tokenAddress: string,
     type?: string,
     timeFrom?: number,
     timeTo?: number,
     marketCap?: boolean,
-    removeOutliers?: boolean
+    removeOutliers?: boolean,
+    dynamicPools?: boolean,
+    timezone?: string | 'current',
+    fastCache?: boolean
+  ): Promise<ChartResponse>;
+  async getChartData(
+    tokenAddressOrParams: string | ChartDataParams,
+    type?: string,
+    timeFrom?: number,
+    timeTo?: number,
+    marketCap?: boolean,
+    removeOutliers?: boolean,
+    dynamicPools?: boolean,
+    timezone?: string | 'current',
+    fastCache?: boolean
   ): Promise<ChartResponse> {
+    // Handle object parameter
+    let tokenAddress: string;
+    if (typeof tokenAddressOrParams === 'object') {
+      const params = tokenAddressOrParams;
+      tokenAddress = params.tokenAddress;
+      type = params.type ?? type;
+      timeFrom = params.timeFrom ?? timeFrom;
+      timeTo = params.timeTo ?? timeTo;
+      marketCap = params.marketCap ?? marketCap;
+      removeOutliers = params.removeOutliers ?? removeOutliers;
+      dynamicPools = params.dynamicPools ?? dynamicPools;
+      timezone = params.timezone ?? timezone;
+      fastCache = params.fastCache ?? fastCache;
+    } else {
+      tokenAddress = tokenAddressOrParams;
+    }
+
     this.validatePublicKey(tokenAddress, 'tokenAddress');
 
     const params = new URLSearchParams();
@@ -700,6 +736,17 @@ export class Client {
     if (timeTo) params.append('time_to', timeTo.toString());
     if (marketCap) params.append('marketCap', 'true');
     if (removeOutliers === false) params.append('removeOutliers', 'false');
+    if (dynamicPools === false) params.append('dynamicPools', 'false');
+    if (timezone) {
+      if (timezone === 'current') {
+        // Get the current IANA timezone
+        const currentTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        params.append('timezone', currentTimezone);
+      } else {
+        params.append('timezone', timezone);
+      }
+    }
+    if (fastCache) params.append('fastCache', 'true');
 
     const query = params.toString() ? `?${params.toString()}` : '';
     return this.request<ChartResponse>(`/chart/${tokenAddress}${query}`);
@@ -707,15 +754,10 @@ export class Client {
 
   /**
    * Get OHLCV data for a specific token and pool
-   * @param tokenAddress Token address
-   * @param poolAddress Pool address
-   * @param type Time interval (e.g., "1s", "1m", "1h", "1d")
-   * @param timeFrom Start time (Unix timestamp in seconds)
-   * @param timeTo End time (Unix timestamp in seconds)
-   * @param marketCap Return chart for market cap instead of pricing
-   * @param removeOutliers Disable outlier removal if set to false (default: true)
+   * @param params Chart parameters as an object or individual parameters
    * @returns OHLCV chart data for a specific pool
    */
+  async getPoolChartData(params: ChartDataParams): Promise<ChartResponse>;
   async getPoolChartData(
     tokenAddress: string,
     poolAddress: string,
@@ -723,10 +765,43 @@ export class Client {
     timeFrom?: number,
     timeTo?: number,
     marketCap?: boolean,
-    removeOutliers?: boolean
+    removeOutliers?: boolean,
+    timezone?: string | 'current',
+    fastCache?: boolean
+  ): Promise<ChartResponse>;
+  async getPoolChartData(
+    tokenAddressOrParams: string | ChartDataParams,
+    poolAddress?: string,
+    type?: string,
+    timeFrom?: number,
+    timeTo?: number,
+    marketCap?: boolean,
+    removeOutliers?: boolean,
+    timezone?: string | 'current',
+    fastCache?: boolean
   ): Promise<ChartResponse> {
+    // Handle object parameter
+    let tokenAddress: string;
+    let actualPoolAddress: string;
+
+    if (typeof tokenAddressOrParams === 'object') {
+      const params = tokenAddressOrParams;
+      tokenAddress = params.tokenAddress;
+      actualPoolAddress = params.poolAddress!;
+      type = params.type ?? type;
+      timeFrom = params.timeFrom ?? timeFrom;
+      timeTo = params.timeTo ?? timeTo;
+      marketCap = params.marketCap ?? marketCap;
+      removeOutliers = params.removeOutliers ?? removeOutliers;
+      timezone = params.timezone ?? timezone;
+      fastCache = params.fastCache ?? fastCache;
+    } else {
+      tokenAddress = tokenAddressOrParams;
+      actualPoolAddress = poolAddress!;
+    }
+
     this.validatePublicKey(tokenAddress, 'tokenAddress');
-    this.validatePublicKey(poolAddress, 'poolAddress');
+    this.validatePublicKey(actualPoolAddress, 'poolAddress');
 
     const params = new URLSearchParams();
     if (type) params.append('type', type);
@@ -734,9 +809,19 @@ export class Client {
     if (timeTo) params.append('time_to', timeTo.toString());
     if (marketCap) params.append('marketCap', 'true');
     if (removeOutliers === false) params.append('removeOutliers', 'false');
+    if (timezone) {
+      if (timezone === 'current') {
+        // Get the current IANA timezone
+        const currentTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        params.append('timezone', currentTimezone);
+      } else {
+        params.append('timezone', timezone);
+      }
+    }
+    if (fastCache) params.append('fastCache', 'true');
 
     const query = params.toString() ? `?${params.toString()}` : '';
-    return this.request<ChartResponse>(`/chart/${tokenAddress}/${poolAddress}${query}`);
+    return this.request<ChartResponse>(`/chart/${tokenAddress}/${actualPoolAddress}${query}`);
   }
 
   /**
@@ -802,15 +887,21 @@ export class Client {
   }
 
   /**
-   * Get PnL data for a specific token in a wallet
-   * @param wallet Wallet address
-   * @param tokenAddress Token address
-   * @returns Token-specific PnL data
-   */
-  async getTokenPnL(wallet: string, tokenAddress: string): Promise<TokenPnLResponse> {
+ * Get PnL data for a specific token in a wallet
+ * @param wallet Wallet address
+ * @param tokenAddress Token address
+ * @param holdingCheck Additional check for current holding value in wallet
+ * @returns Token-specific PnL data
+ */
+  async getTokenPnL(wallet: string, tokenAddress: string, holdingCheck?: boolean): Promise<TokenPnLResponse> {
     this.validatePublicKey(wallet, 'wallet');
     this.validatePublicKey(tokenAddress, 'tokenAddress');
-    return this.request<TokenPnLResponse>(`/pnl/${wallet}/${tokenAddress}`);
+
+    const params = new URLSearchParams();
+    if (holdingCheck) params.append('holdingCheck', 'true');
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<TokenPnLResponse>(`/pnl/${wallet}/${tokenAddress}${query}`);
   }
 
   // ======== TOP TRADERS ENDPOINTS ========

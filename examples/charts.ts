@@ -1,7 +1,7 @@
 /**
  * Chart-related examples for the Solana Tracker API
  */
-import { Client } from '@solanatracker/data-api';
+import { Client } from '@solana-tracker/data-api';
 import { handleError } from './utils';
 
 // Initialize the API client with your API key
@@ -10,23 +10,41 @@ const client = new Client({
 });
 
 /**
- * Example 1: Get OHLCV chart data for a token
+ * Example 1: Get OHLCV chart data for a token (with new parameters)
  */
-export async function getTokenChartData(tokenAddress: string, timeframe: string = '1h', days: number = 7) {
+export async function getTokenChartData(tokenAddress: string, timeframe: string = '1s') {
   try {
     // Calculate time range (e.g., past 7 days)
     const now = Math.floor(Date.now() / 1000);
-    const startTime = now - (days * 24 * 60 * 60);
     
-    const chartData = await client.getChartData(
-      tokenAddress,
-      timeframe,
-      startTime,
-      now
-    );
+    // Method 1: Using object syntax (recommended for multiple parameters)
+    const chartData = await client.getChartData({
+      tokenAddress: tokenAddress,
+      type: timeframe,
+      timeTo: now,
+      marketCap: false,              // Get price data, not market cap
+      removeOutliers: true,           // Remove outliers for cleaner chart
+      dynamicPools: true,             // Use dynamic pool selection for best data
+      timezone: 'current',            // Use user's current timezone
+      fastCache: true                 // Enable fast cache for quicker response
+    });
     
-    console.log(`\n=== ${timeframe} Chart Data for ${tokenAddress} (Last ${days} Days) ===`);
+    // Method 2: Using traditional syntax (still supported)
+    // const chartData = await client.getChartData(
+    //   tokenAddress,
+    //   timeframe,
+    //   startTime,
+    //   now,
+    //   false,    // marketCap
+    //   true,     // removeOutliers
+    //   true,     // dynamicPools
+    //   'current', // timezone
+    //   true      // fastCache
+    // );
+    
+    console.log(`\n=== ${timeframe} Chart Data for ${tokenAddress}`);
     console.log(`Data Points: ${chartData.oclhv.length}`);
+    console.log(`Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
     
     if (chartData.oclhv.length > 0) {
       // Display first and last candle
@@ -46,7 +64,7 @@ export async function getTokenChartData(tokenAddress: string, timeframe: string 
       console.log(`Open: $${lastCandle.open.toFixed(6)}`);
       console.log(`High: $${lastCandle.high.toFixed(6)}`);
       console.log(`Low: $${lastCandle.low.toFixed(6)}`);
-      console.log(`Close: ${lastCandle.close.toFixed(6)}`);
+      console.log(`Close: $${lastCandle.close.toFixed(6)}`);
       console.log(`Volume: ${lastCandle.volume.toFixed(2)}`);
       
       // Calculate price change over the period
@@ -72,10 +90,10 @@ export async function getTokenChartData(tokenAddress: string, timeframe: string 
         totalVolume += candle.volume;
       });
       
-      console.log(`\nHighest Price: ${highestPrice.toFixed(6)} at ${new Date(highestTime * 1000).toLocaleString()}`);
-      console.log(`Lowest Price: ${lowestPrice.toFixed(6)} at ${new Date(lowestTime * 1000).toLocaleString()}`);
-      console.log(`Total Volume: ${totalVolume.toFixed(2)}`);
-      console.log(`Average Volume per Candle: ${(totalVolume / chartData.oclhv.length).toFixed(2)}`);
+      console.log(`\nHighest Price: $${highestPrice.toFixed(6)} at ${new Date(highestTime * 1000).toLocaleString()}`);
+      console.log(`Lowest Price: $${lowestPrice.toFixed(6)} at ${new Date(lowestTime * 1000).toLocaleString()}`);
+      console.log(`Total Volume: $${totalVolume.toFixed(2)}`);
+      console.log(`Average Volume per Candle: $${(totalVolume / chartData.oclhv.length).toFixed(2)}`);
     }
     
     return chartData;
@@ -88,36 +106,38 @@ export async function getTokenChartData(tokenAddress: string, timeframe: string 
 /**
  * Example 2: Get OHLCV data for a specific token and pool
  */
-export async function getPoolChartData(tokenAddress: string, poolAddress: string, timeframe: string = '1h', days: number = 7) {
+export async function getPoolChartData(tokenAddress: string, poolAddress: string, timeframe: string = '1s') {
   try {
     // Calculate time range (e.g., past 7 days)
     const now = Math.floor(Date.now() / 1000);
-    const startTime = now - (days * 24 * 60 * 60);
     
-    const chartData = await client.getPoolChartData(
-      tokenAddress,
-      poolAddress,
-      timeframe,
-      startTime,
-      now
-    );
+    // Using object syntax with specific timezone
+    const chartData = await client.getPoolChartData({
+      tokenAddress: tokenAddress,
+      poolAddress: poolAddress,
+      type: timeframe,
+      timeTo: now,
+      timezone: 'current', // Use user's current timezone
+      fastCache: false               // Disable fast cache for this request
+    });
     
     console.log(`\n=== ${timeframe} Pool Chart Data for ${tokenAddress} in Pool ${poolAddress} (Last ${days} Days) ===`);
     console.log(`Data Points: ${chartData.oclhv.length}`);
+    console.log(`Timezone: America/New_York`);
     
     if (chartData.oclhv.length > 0) {
       const firstCandle = chartData.oclhv[0];
       const lastCandle = chartData.oclhv[chartData.oclhv.length - 1];
       
       console.log('\nFirst Candle:');
-      console.log(`Time: ${new Date(firstCandle.time * 1000).toLocaleString()}`);
-      console.log(`Open: ${firstCandle.open.toFixed(6)}`);
-      console.log(`Close: ${firstCandle.close.toFixed(6)}`);
+      console.log(`Time: ${new Date(firstCandle.time * 1000).toLocaleString('en-US', { timeZone: 'America/New_York' })}`);
+      console.log(`Open: $${firstCandle.open.toFixed(6)}`);
+      console.log(`Close: $${firstCandle.close.toFixed(6)}`);
       
       console.log('\nLast Candle:');
-      console.log(`Time: ${new Date(lastCandle.time * 1000).toLocaleString()}`);
-      console.log(`Open: ${lastCandle.open.toFixed(6)}`);
-      console.log(`Close: ${lastCandle.close.toFixed(6)}`);
+      console.log(`Time: ${new Date(lastCandle.time * 1000).toLocaleString('en-US', { timeZone: 'America/New_York' })}`);
+      console.log(`Open: $${lastCandle.open.toFixed(6)}`);
+      console.log(`Close: $${lastCandle.close.toFixed(6)}`);
       
       // Calculate price change
       const priceChange = ((lastCandle.close - firstCandle.open) / firstCandle.open) * 100;

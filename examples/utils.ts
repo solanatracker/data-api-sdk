@@ -1,7 +1,7 @@
 /**
  * Utility functions for Solana Tracker API examples
  */
-import { DataApiError, RateLimitError, ValidationError } from '@solanatracker/data-api';
+import { DataApiError, RateLimitError, ValidationError } from '@solana-tracker/data-api';
 
 /**
  * Handle API errors with informative messages
