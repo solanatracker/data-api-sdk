@@ -1242,6 +1242,15 @@ export interface PoolUpdate {
   // New fields for different market types
   launchpad?: Launchpad; // For raydium-launchpad market
   meteoraCurve?: MeteoraCurve; // For meteora-curve market
+  raydium?: {
+    baseLiquidity: number;
+    quoteLiquidity: number;
+  };
+  heaven?: {
+    baseLiquidity: number;
+    quoteLiquidity: number;
+    is_migrated: boolean;
+  };
 }
 
 export interface HolderUpdate {

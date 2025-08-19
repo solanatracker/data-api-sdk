@@ -11,11 +11,11 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 - Real-time data streaming via WebSocket (Datastream)
 - Built-in error handling with specific error types
 - Compatible with both Node.js and browser environments
+- **NEW**: Heaven DEX support
 - **NEW**: Live stats subscriptions for tokens and pools
-- **NEW**: Primary pool subscriptions for token updates
-- **NEW**: Improved wallet balance subscription API
-- **NEW**: Snipers and insiders tracking via WebSocket 
-- **NEW**: Enhanced error details for better debugging
+- Primary pool subscriptions for token updates
+- Wallet balance subscription API
+- Snipers and insiders tracking via WebSocket 
 - Support for all pool types including launchpad and meteora curve pools (Shows which platform token is released on, Moonshot, Bonk, Jupiter Studio etc)
 
 ## Installation

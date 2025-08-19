@@ -49,31 +49,31 @@ export interface TokenValuePair {
 }
 
 export interface LaunchpadLiquidity {
-    amount: number;
-    usd: number;
+  amount: number;
+  usd: number;
 }
 
 export interface Launchpad {
-    name: string;
-    url: string;
-    logo: string;
-    baseLiquidity: LaunchpadLiquidity;
-    quoteLiquidity: LaunchpadLiquidity;
+  name: string;
+  url: string;
+  logo: string;
+  baseLiquidity: LaunchpadLiquidity;
+  quoteLiquidity: LaunchpadLiquidity;
 }
 
 export interface MeteoraCurveLiquidity {
-    base?: number;  // For baseLiquidity
-    quote?: number; // For quoteLiquidity
-    usd: number;
+  base?: number;  // For baseLiquidity
+  quote?: number; // For quoteLiquidity
+  usd: number;
 }
 
 export interface MeteoraCurve {
-    baseLiquidity: MeteoraCurveLiquidity;
-    quoteLiquidity: MeteoraCurveLiquidity;
-    fee: number;
-    name?: string;  // Optional
-    url?: string;   // Optional
-    logo?: string;  // Optional
+  baseLiquidity: MeteoraCurveLiquidity;
+  quoteLiquidity: MeteoraCurveLiquidity;
+  fee: number;
+  name?: string;  // Optional
+  url?: string;   // Optional
+  logo?: string;  // Optional
 }
 
 export interface RiskWallet {
@@ -116,6 +116,15 @@ export interface PoolInfo {
   bundleId?: string;
   launchpad?: Launchpad;
   meteoraCurve?: MeteoraCurve;
+  raydium?: {
+    baseLiquidity: number;
+    quoteLiquidity: number;
+  };
+  heaven?: {
+    baseLiquidity: number;
+    quoteLiquidity: number;
+    is_migrated: boolean;
+  };
 }
 
 export interface PriceChangeData {
