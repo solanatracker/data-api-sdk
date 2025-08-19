@@ -295,14 +295,14 @@ class SubscriptionMethods {
    */
   wallet(walletAddress: string): WalletBalanceSubscriptionMethods {
     const ds = this.ds;
-    
+
     return {
       balance: () => {
         return ds._subscribe<WalletBalanceUpdate>(
           `wallet:${walletAddress}:balance`
         );
       },
-      
+
       tokenBalance: (tokenAddress: string) => {
         return ds._subscribe<WalletBalanceUpdate>(
           `wallet:${walletAddress}:${tokenAddress}:balance`
@@ -449,23 +449,23 @@ class TransactionSubscriptions {
    */
   wallet(walletAddress: string): WalletTransactionSubscriptionMethods {
     const ds = this.ds;
-    
+
     // Create the base subscription for transactions
     const baseSubscription = ds._subscribe<WalletTransaction>(`wallet:${walletAddress}`);
-    
+
     return {
       ...baseSubscription,
-      
+
       // Default on method for transactions
       on: (callback: (data: WalletTransaction) => void) => {
         return baseSubscription.on(callback);
       },
-      
+
       // Explicit transactions method (not deprecated)
       transactions: () => {
         return ds._subscribe<WalletTransaction>(`wallet:${walletAddress}`);
       },
-      
+
       // Deprecated balance methods
       balance: () => {
         console.warn(
@@ -477,7 +477,7 @@ class TransactionSubscriptions {
           `wallet:${walletAddress}:balance`
         );
       },
-      
+
       tokenBalance: (tokenAddress: string) => {
         console.warn(
           'datastream.subscribe.tx.wallet().tokenBalance() is deprecated. ' +
@@ -1250,6 +1250,7 @@ export interface PoolUpdate {
     baseLiquidity: number;
     quoteLiquidity: number;
     is_migrated: boolean;
+    migrationTime?: number;
   };
 }
 

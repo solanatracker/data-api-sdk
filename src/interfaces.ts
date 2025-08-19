@@ -124,6 +124,7 @@ export interface PoolInfo {
     baseLiquidity: number;
     quoteLiquidity: number;
     is_migrated: boolean;
+    migrationTime?: number; 
   };
 }
 
