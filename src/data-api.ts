@@ -248,9 +248,9 @@ export class Client {
   }
 
   /**
-   * Get the all-time high price for a token
+   * Get the all-time high price and market cap for a token
    * @param tokenAddress The token's mint address
-   * @returns All-time high price data
+   * @returns All-time high price and market cap data
    */
   async getAthPrice(tokenAddress: string): Promise<AthPrice> {
     this.validatePublicKey(tokenAddress, 'tokenAddress');

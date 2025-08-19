@@ -195,7 +195,9 @@ export interface TokenHoldersResponse {
 
 export interface AthPrice {
   highest_price: number;
+  highest_market_cap: number;
   timestamp: number;
+  pool_id: string;
 }
 
 export interface DeployerToken {

@@ -1,6 +1,6 @@
 {
     "name": "@solana-tracker/data-api",
-    "version": "0.0.10",
+    "version": "0.0.11",
     "description": "Official Solana Tracker Data API client for accessing Solana Data",
     "main": "dist/index.js",
     "module": "dist/index.mjs",
