@@ -4,6 +4,7 @@ import {
   TokenHoldersResponse,
   TopHolder,
   AthPrice,
+  Ath,
   DeployerTokensResponse,
   SearchParams,
   SearchResponse,
@@ -247,6 +248,16 @@ export class Client {
     return this.request<TopHolder[]>(`/tokens/${tokenAddress}/holders/top`);
   }
 
+/**
+   * Get the all-time high Data for a token
+   * @param tokenAddress The token's mint address
+   * @returns All-time high data
+   */
+  async getAth(tokenAddress: string): Promise<Ath> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+    return this.request<Ath>(`/tokens/${tokenAddress}/ath`);
+  }
+  
   /**
    * Get the all-time high price for a token
    * @param tokenAddress The token's mint address

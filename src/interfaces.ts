@@ -192,6 +192,12 @@ export interface TokenHoldersResponse {
   total: number;
   accounts: Holder[];
 }
+export interface Ath{
+  highest_price: number;
+  highest_market_cap: number;
+  timestamp: number;
+  pool_id:string
+}
 
 export interface AthPrice {
   highest_price: number;
