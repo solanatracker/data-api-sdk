@@ -147,10 +147,16 @@ export interface TokenEvents {
   "24h"?: PriceChangeData;
 }
 
+export interface DevHolding {
+  percentage: number;
+  amount: number;
+}
+
 export interface TokenRisk {
   snipers: RiskCategory;
   insiders: RiskCategory;
   top10: number;
+  dev: DevHolding;
   rugged: boolean;
   risks: TokenRiskFactor[];
   score: number;

@@ -11,7 +11,8 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 - Real-time data streaming via WebSocket (Datastream)
 - Built-in error handling with specific error types
 - Compatible with both Node.js and browser environments
-- **NEW**: Heaven DEX support
+- **NEW**: Developer/creator holdings tracking via WebSocket
+- **NEW**: Top 10 holders monitoring with real-time percentage updates
 - **NEW**: Live stats subscriptions for tokens and pools
 - Primary pool subscriptions for token updates
 - Wallet balance subscription API
@@ -190,6 +191,7 @@ dataStream.subscribe.stats.token(tokenAddress).on((stats) => {
   });
 });
 
+
 // Subscribe to live stats for a specific pool
 dataStream.subscribe.stats.pool('poolId').on((stats) => {
   console.log('Pool stats update:');
@@ -201,6 +203,31 @@ dataStream.subscribe.stats.pool('poolId').on((stats) => {
     console.log(`  Price: $${stats['5m'].price}`);
   }
 });
+
+// Example 12: NEW - Monitor developer/creator holdings for a token
+dataStream.subscribe.token(tokenAddress).dev.holding().on((devUpdate) => {
+  console.log(`Developer ${devUpdate.creator} holdings update:`);
+  console.log(`  Amount: ${devUpdate.amount}`);
+  console.log(`  Percentage: ${devUpdate.percentage.toFixed(4)}%`);
+  console.log(`  Previous: ${devUpdate.previousPercentage.toFixed(4)}%`);
+  const change = devUpdate.percentage - devUpdate.previousPercentage;
+  console.log(`  Change: ${change > 0 ? '+' : ''}${change.toFixed(4)}%`);
+});
+
+// Example 13: NEW - Monitor top 10 holders for a token
+dataStream.subscribe.token(tokenAddress).top10().on((top10Update) => {
+  console.log(`Top 10 holders control ${top10Update.totalPercentage.toFixed(2)}% of supply`);
+  
+  if (top10Update.previousPercentage !== null) {
+    const change = top10Update.totalPercentage - top10Update.previousPercentage;
+    console.log(`Change from previous: ${change > 0 ? '+' : ''}${change.toFixed(2)}%`);
+  }
+  
+  console.log('Top 10 holders:');
+  top10Update.holders.forEach((holder, index) => {
+    console.log(`  #${index + 1}: ${holder.address.slice(0, 8)}... - ${holder.percentage.toFixed(2)}%`);
+  });
+});
 ```
 
 Available subscription methods:
@@ -211,6 +238,9 @@ dataStream.subscribe.latest();                          // Latest tokens and poo
 dataStream.subscribe.token(tokenAddress);               // Token changes (all pools - default)
 dataStream.subscribe.token(tokenAddress).all();         // Token changes (all pools - explicit)
 dataStream.subscribe.token(tokenAddress).primary();     // Token changes (primary pool only) - NEW
+// Developer and Top Holders tracking
+dataStream.subscribe.token(tokenAddress).dev.holding();  // Developer holdings updates
+dataStream.subscribe.token(tokenAddress).top10();        // Top 10 holders updates
 dataStream.subscribe.pool(poolId);                      // Pool changes
 
 // Price updates
@@ -294,6 +324,10 @@ dataStream.on(`sniper:${tokenAddress}`, (data) => console.log('Sniper update:', 
 dataStream.on(`insider:${tokenAddress}`, (data) => console.log('Insider update:', data));
 dataStream.on(`stats:token:${tokenAddress}`, (data) => console.log('Token stats:', data)); // NEW
 dataStream.on(`stats:pool:${poolId}`, (data) => console.log('Pool stats:', data)); // NEW
+
+// Developer and top holders events
+dataStream.on(`dev_holding:${tokenAddress}`, (data) => console.log('Dev holding update:', data));
+dataStream.on(`top10:${tokenAddress}`, (data) => console.log('Top 10 holders update:', data));
 
 // New approach - Chain .on() directly to subscription
 dataStream.subscribe.latest().on((data) => console.log('New token:', data));
@@ -575,134 +609,38 @@ try {
 ### Version Updates
 
 #### New Features:
+
 1. **Live Stats Subscriptions**: Subscribe to real-time statistics for tokens and pools across all timeframes (1m, 5m, 15m, 30m, 1h, 4h, 24h) using `.stats.token()` and `.stats.pool()` methods
 2. **Primary Pool Subscriptions**: Subscribe to only the primary pool for a token using `.primary()` method
-3. **Improved Wallet Balance API**: Wallet balance subscriptions moved to top-level `datastream.subscribe.wallet()` for better organization
-4. **Enhanced Chart Parameters**: 
-   - `dynamicPools`: Automatically select the best pool over time for consistent charts
-   - `timezone`: Support for timezone-aware charts (use 'current' or specify timezone)
-   - `fastCache`: Enable fast caching for improved performance
-5. **Object Syntax for Chart Functions**: Cleaner API for functions with multiple parameters
-6. **Snipers and Insiders Tracking**: Monitor wallets that are identified as snipers or insiders for any token via WebSocket subscriptions
-7. **Enhanced Error Handling**: Error responses now include detailed error information from the API when available
-8. **Subscription Endpoint**: New endpoint to get subscription details including plan, credits, and billing information
+3. **Developer Holdings Tracking**: Monitor developer/creator wallet holdings in real-time with `.dev.holding()` method
+4. **Top 10 Holders Monitoring**: Track the top 10 holders and their combined percentage of token supply with `.top10()` method
 
 #### Type Updates:
 ```typescript
-// NEW: TimeframeStats interface for live statistics
-interface TimeframeStats {
-  buyers: number;
-  sellers: number;
-  volume: {
-    buys: number;
-    sells: number;
-    total: number;
-  };
-  transactions: number;
-  buys: number;
-  sells: number;
-  wallets: number;
-  price: number;
-  priceChangePercentage: number;
-}
-
-// NEW: TokenStats interface for aggregated timeframe statistics
-interface TokenStats {
-  "1m"?: TimeframeStats;
-  "5m"?: TimeframeStats;
-  "15m"?: TimeframeStats;
-  "30m"?: TimeframeStats;
-  "1h"?: TimeframeStats;
-  "4h"?: TimeframeStats;
-  "24h"?: TimeframeStats;
-}
-
-// NEW: Chart data parameters interface
-interface ChartDataParams {
-  tokenAddress: string;
-  poolAddress?: string;  // For pool-specific charts
-  type?: string;
-  timeFrom?: number;
-  timeTo?: number;
-  marketCap?: boolean;
-  removeOutliers?: boolean;
-  dynamicPools?: boolean;
-  timezone?: string | 'current';
-  fastCache?: boolean;
-}
-
-// NEW: Token PnL parameters interface
-interface TokenPnLParams {
-  wallet: string;
-  tokenAddress: string;
-  holdingCheck?: boolean;
-}
-
-// NEW: Subscription information
-interface SubscriptionResponse {
-  credits: number;
-  plan: string;
-  next_billing_date: string;
-  status: string;
-}
-
-// NEW: Sniper/Insider update structure
-interface SniperInsiderUpdate {
-  wallet: string;
-  amount: string;
-  tokenAmount: number;
-  percentage: number;
-  previousAmount: number;
-  previousPercentage: number;
-  totalSniperPercentage: number;
-  totalInsiderPercentage: number;
-}
-
-// NEW: Wallet balance update structure
-interface WalletBalanceUpdate {
-  wallet: string;
+// NEW: Developer holding update structure
+interface DevHoldingUpdate {
   token: string;
-  amount: number;
+  creator: string;
+  amount: string;
+  percentage: number;
+  previousPercentage: number;
+  timestamp: number;
 }
 
-// UPDATED: Risk structure now includes detailed snipers/insiders
-interface TokenRisk {
-  snipers: {
-    count: number;
-    totalBalance: number;
-    totalPercentage: number;
-    wallets: Array<{
-      address: string;
-      balance: number;
-      percentage: number;
-    }>;
-  };
-  insiders: {
-    count: number;
-    totalBalance: number;
-    totalPercentage: number;
-    wallets: Array<{
-      address: string;
-      balance: number;
-      percentage: number;
-    }>;
-  };
-  top10: number;
-  rugged: boolean;
-  risks: TokenRiskFactor[];
-  score: number;
-  jupiterVerified?: boolean;
+// NEW: Top holder information
+interface TopHolder {
+  address: string;
+  amount: string;
+  percentage: number;
 }
 
-// NEW: Pool structures for different markets
-interface PoolInfo {
-  // ... existing fields ...
-  launchpad?: Launchpad;      // For raydium-launchpad market
-  meteoraCurve?: MeteoraCurve; // For meteora-curve market
-  txns?: {
-    // ... existing fields ...
-    volume24h: number;         // NEW field
-  };
+// NEW: Top 10 holders update structure
+interface Top10HoldersUpdate {
+  token: string;
+  holders: TopHolder[];
+  totalPercentage: number;
+  previousPercentage: number | null;
+  timestamp: number;
 }
 ```
 

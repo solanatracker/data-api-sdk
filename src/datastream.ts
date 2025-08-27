@@ -122,6 +122,14 @@ export interface TokenSubscriptionMethods {
    * Subscribe to primary pool updates for this token
    */
   primary(): SubscribeResponse<PoolUpdate>;
+  /**
+  * Subscribe to dev/creator related events for this token
+  */
+  dev: DevSubscriptionMethods;
+  /**
+  * Subscribe to top 10 holders updates for this token
+  */
+  top10(): SubscribeResponse<Top10HoldersUpdate>;
 }
 
 /**
@@ -137,6 +145,17 @@ export interface WalletBalanceSubscriptionMethods {
    */
   tokenBalance(tokenAddress: string): SubscribeResponse<WalletBalanceUpdate>;
 }
+
+/**
+ * Dev-related subscription methods interface
+ */
+export interface DevSubscriptionMethods {
+  /**
+   * Subscribe to developer/creator holding updates for the token
+   */
+  holding(): SubscribeResponse<DevHoldingUpdate>;
+}
+
 
 /**
  * Subscription methods for the Datastream client
@@ -216,7 +235,7 @@ class SubscriptionMethods {
   }
 
   /**
-   * Subscribe to token-related events (all pools or primary pool)
+   * Subscribe to token-related events (all pools, primary pool, dev events, or top holders)
    *
    * @example
    * // For all pool updates:
@@ -226,11 +245,24 @@ class SubscriptionMethods {
    *
    * // For primary pool updates only:
    * datastream.subscribe.token('address').primary().on(callback)
+   * 
+   * // For dev holding updates:
+   * datastream.subscribe.token('address').dev.holding().on(callback)
+   * 
+   * // For top 10 holders updates:
+   * datastream.subscribe.token('address').top10().on(callback)
    *
    * @param tokenAddress The token address
    */
   token(tokenAddress: string): TokenSubscriptionMethods {
     const ds = this.ds;
+
+    // Create the dev subscriptions object
+    const devSubscriptions: DevSubscriptionMethods = {
+      holding: () => {
+        return ds._subscribe<DevHoldingUpdate>(`dev_holding:${tokenAddress}`);
+      },
+    };
 
     // Create the base subscription for backward compatibility
     const baseSubscription = ds._subscribe<PoolUpdate>(`token:${tokenAddress}`);
@@ -251,6 +283,10 @@ class SubscriptionMethods {
 
       primary: () => {
         return ds._subscribe<PoolUpdate>(`token:${tokenAddress}:primary`);
+      },
+      dev: devSubscriptions,
+      top10: () => {
+        return ds._subscribe<Top10HoldersUpdate>(`top10:${tokenAddress}`);
       },
     };
 
@@ -1320,4 +1356,33 @@ export interface SniperInsiderUpdate {
   previousPercentage: number;
   totalSniperPercentage: number;
   totalInsiderPercentage: number;
+}
+
+export interface DevHoldingUpdate {
+  token: string;
+  creator: string;
+  amount: string;
+  percentage: number;
+  previousPercentage: number;
+  timestamp: number;
+}
+
+/**
+ * Individual holder information in top 10
+ */
+export interface TopHolder {
+  address: string;
+  amount: string;
+  percentage: number;
+}
+
+/**
+ * Top 10 holders update data
+ */
+export interface Top10HoldersUpdate {
+  token: string;
+  holders: TopHolder[];
+  totalPercentage: number;
+  previousPercentage: number | null;
+  timestamp: number;
 }
