@@ -282,6 +282,7 @@ class SubscriptionMethods {
       },
 
       primary: () => {
+        console.log('Subscribing to primary pool for token:', tokenAddress);
         return ds._subscribe<PoolUpdate>(`token:${tokenAddress}:primary`);
       },
       dev: devSubscriptions,
@@ -727,6 +728,15 @@ export class Datastream extends EventEmitter {
     // Special handling for price events
     if (room.includes('price:')) {
       this.emit(`price-by-token:${message.token}`, message);
+    }
+
+
+    // If this is a pool message, also emit on token:primary if subscribed
+    if (room.startsWith('pool:') && message.tokenAddress) {
+      const primaryRoom = `token:${message.tokenAddress}:primary`;
+      if (this.subscribedRooms.has(primaryRoom)) {
+        this.emit(primaryRoom, message);
+      }
     }
 
     this.emit(room, message);
