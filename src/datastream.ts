@@ -1323,11 +1323,11 @@ export interface WalletTransaction {
   type: 'buy' | 'sell';
   wallet: string;
   time: number;
-    price: {
+  price: {
     quote: number;
     usd: number;
   }
-    volume: {
+  volume: {
     usd: number;
     sol: number;
   }
@@ -1406,7 +1406,7 @@ export interface Top10HoldersUpdate {
   timestamp: number;
 }
 
-  export interface Fees {
+export interface Fees {
   photon?: number;
   bloom?: number;
   bullx?: number;
@@ -1428,8 +1428,27 @@ export interface Top10HoldersUpdate {
   [key: string]: number | undefined;
 }
 
+export interface TransactionFees {
+  photon?: number;
+  bloom?: number;
+  bullx?: number;
+  axiom?: number;
+  vector?: number;
+  jito?: number;
+  '0slot'?: number;
+  'helius-sender'?: number;
+  nextblock?: number;
+  trojan?: number;
+  soltradingbot?: number;
+  maestro?: number;
+  padre?: number;
+  network?: number;
+  [key: string]: number | undefined;
+}
+
 export interface FeesUpdate {
-  fees: Fees;
+  total: Fees;
+  fees: TransactionFees;
   tx: string;
   time: number;
 }

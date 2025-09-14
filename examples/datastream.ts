@@ -220,29 +220,6 @@ const subscribeToPoolTransactions = (
   return subscription;
 };
 
-// Subscribe to transactions for a specific wallet
-const subscribeToWalletTransactions = (walletAddress: string = WALLET_ADDRESS) => {
-  const subscription = dataStream.subscribe.tx.wallet(walletAddress).transactions().on((data) => {
-    console.log(`Wallet ${data.type.toUpperCase()} transaction`);
-    console.log(`Transaction ID: ${data.tx}`);
-    console.log(`Amount: ${data.amount}`);
-    console.log(`Price: $${data.priceUsd}`);
-    console.log(`Volume: $${data.volume}`);
-    console.log(`SOL Volume: ${data.solVolume}`);
-
-    if (data.token) {
-      console.log('Token Details:');
-      console.log(`From: ${data.token.from.name} (${data.token.from.symbol})`);
-      console.log(`To: ${data.token.to.name} (${data.token.to.symbol})`);
-    }
-
-    console.log(`Time: ${new Date(data.time).toLocaleTimeString()}`);
-    console.log('---');
-  });
-
-  return subscription;
-};
-
 
 const subscribeToPumpFunCurvePercentage = () => {
   const subscription = dataStream.subscribe.curvePercentage('pumpfun', 30);
