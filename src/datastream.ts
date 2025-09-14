@@ -130,6 +130,10 @@ export interface TokenSubscriptionMethods {
   * Subscribe to top 10 holders updates for this token
   */
   top10(): SubscribeResponse<Top10HoldersUpdate>;
+  /**
+  * Subscribe to platform and network fees for this token
+  */
+  fees(): SubscribeResponse<FeesUpdate>;
 }
 
 /**
@@ -287,6 +291,9 @@ class SubscriptionMethods {
       dev: devSubscriptions,
       top10: () => {
         return ds._subscribe<Top10HoldersUpdate>(`top10:${tokenAddress}`);
+      },
+      fees: () => {
+        return ds._subscribe<FeesUpdate>(`fees:${tokenAddress}`);
       },
     };
 
@@ -1310,35 +1317,31 @@ export interface HolderUpdate {
   total: number;
 }
 
+
 export interface WalletTransaction {
   tx: string;
-  amount: number;
-  priceUsd: number;
-  solVolume: number;
-  volume: number;
   type: 'buy' | 'sell';
   wallet: string;
   time: number;
+    price: {
+    quote: number;
+    usd: number;
+  }
+    volume: {
+    usd: number;
+    sol: number;
+  }
   program: string;
-  token?: {
-    from: {
-      name: string;
-      symbol: string;
-      image?: string;
-      decimals: number;
-      amount: number;
-      priceUsd?: number;
-      address: string;
-    };
-    to: {
-      name: string;
-      symbol: string;
-      image?: string;
-      decimals: number;
-      amount: number;
-      priceUsd?: number;
-      address: string;
-    };
+  pools: string[];
+  from: {
+    address: string;
+    amount: number;
+    token: TokenInfo & { amount: number, price?: { usd: number; quote: number } };
+  };
+  to: {
+    address: string;
+    amount: number;
+    token: TokenInfo & { amount: number, price?: { usd: number; quote: number } };
   };
 }
 
@@ -1401,4 +1404,32 @@ export interface Top10HoldersUpdate {
   totalPercentage: number;
   previousPercentage: number | null;
   timestamp: number;
+}
+
+  export interface Fees {
+  photon?: number;
+  bloom?: number;
+  bullx?: number;
+  axiom?: number;
+  vector?: number;
+  jito?: number;
+  '0slot'?: number;
+  'helius-sender'?: number;
+  nextblock?: number;
+  trojan?: number;
+  soltradingbot?: number;
+  maestro?: number;
+  padre?: number;
+  network?: number;
+
+  totalTrading: number;
+  totalTips: number;
+  total: number;
+  [key: string]: number | undefined;
+}
+
+export interface FeesUpdate {
+  fees: Fees;
+  tx: string;
+  time: number;
 }
