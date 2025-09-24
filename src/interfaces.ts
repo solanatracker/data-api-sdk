@@ -132,6 +132,14 @@ export interface PriceChangeData {
   priceChangePercentage: number;
 }
 
+type Seconds = 1 | 5 | 15; 
+type Minutes = 1 | 3 | 5 | 15 | 30;
+type Hours = 1 | 2 | 4 | 6 | 8 | 12;
+type Days = 1 | 3
+type Weeks = 1
+type Months = 1
+export type TimeInterval = `${Seconds}s` | `${Minutes}m` | `${Hours}h` | `${Days}d` | `${Weeks}w` | `${Months}mn`
+
 export interface TokenEvents {
   "1m"?: PriceChangeData;
   "5m"?: PriceChangeData;
@@ -743,7 +751,7 @@ export interface ChartDataParams {
   /** Pool address (only for pool-specific charts) */
   poolAddress?: string;
   /** Time interval (e.g., "1s", "1m", "1h", "1d") */
-  type?: string;
+  type?: TimeInterval;
   /** Start time (Unix timestamp in seconds) */
   timeFrom?: number;
   /** End time (Unix timestamp in seconds) */
@@ -759,4 +767,3 @@ export interface ChartDataParams {
   /** Enable live cache for faster response times (default: false) */
   fastCache?: boolean;
 }
-
