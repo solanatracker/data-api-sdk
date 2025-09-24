@@ -1,4 +1,4 @@
-import {
+import type {
   TokenDetailResponse,
   MultiTokensResponse,
   TokenHoldersResponse,
@@ -28,7 +28,8 @@ import {
   WalletTradesResponse,
   ProcessedEvent,
   SubscriptionResponse,
-  ChartDataParams
+  ChartDataParams,
+  TimeInterval
 } from './interfaces';
 
 import { decodeBinaryEvents } from './event-processor';
@@ -834,7 +835,7 @@ export class Client {
    */
   async getHoldersChart(
     tokenAddress: string,
-    type?: string,
+    type?: TimeInterval,
     timeFrom?: number,
     timeTo?: number
   ): Promise<HoldersChartResponse> {
