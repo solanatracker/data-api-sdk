@@ -235,34 +235,97 @@ export interface DeployerTokensResponse {
 }
 
 export interface SearchParams {
+  // Search & Pagination
   query?: string;
+  symbol?: string;
   page?: number;
   limit?: number;
+  cursor?: string;
   sortBy?: string;
   sortOrder?: string;
   showAllPools?: boolean;
+  showPriceChanges?: boolean;
+  
+  // Creation Filters
   minCreatedAt?: number;
   maxCreatedAt?: number;
+  
+  // Liquidity & Market Cap Filters
   minLiquidity?: number;
   maxLiquidity?: number;
   minMarketCap?: number;
   maxMarketCap?: number;
+  
+  // Volume Filters
   minVolume?: number;
   maxVolume?: number;
   volumeTimeframe?: string;
+  minVolume_5m?: number;
+  maxVolume_5m?: number;
+  minVolume_15m?: number;
+  maxVolume_15m?: number;
+  minVolume_30m?: number;
+  maxVolume_30m?: number;
+  minVolume_1h?: number;
+  maxVolume_1h?: number;
+  minVolume_6h?: number;
+  maxVolume_6h?: number;
+  minVolume_12h?: number;
+  maxVolume_12h?: number;
+  minVolume_24h?: number;
+  maxVolume_24h?: number;
+  
+  // Transaction Filters
   minBuys?: number;
   maxBuys?: number;
   minSells?: number;
   maxSells?: number;
   minTotalTransactions?: number;
   maxTotalTransactions?: number;
+  
+  // Holder Filters
+  minHolders?: number;
+  maxHolders?: number;
+  minTop10?: number;
+  maxTop10?: number;
+  minDev?: number;
+  maxDev?: number;
+  minInsiders?: number;
+  maxInsiders?: number;
+  minSnipers?: number;
+  maxSnipers?: number;
+  
+  // Token Characteristics
   lpBurn?: number;
   market?: string;
   freezeAuthority?: string;
   mintAuthority?: string;
   deployer?: string;
+  creator?: string;
   status?: string;
-  showPriceChanges?: boolean;
+  minCurvePercentage?: number;
+  maxCurvePercentage?: number;
+  
+  // Social Media Filters
+  twitter?: string;
+  telegram?: string;
+  discord?: string;
+  website?: string;
+  facebook?: string;
+  instagram?: string;
+  youtube?: string;
+  reddit?: string;
+  tiktok?: string;
+  github?: string;
+  
+  // Fees Filters
+  minFeesTotal?: number;
+  maxFeesTotal?: number;
+  minFeesTrading?: number;
+  maxFeesTrading?: number;
+  minFeesTips?: number;
+  maxFeesTips?: number;
+  
   [key: string]: string | number | boolean | undefined;
 }
 
@@ -299,6 +362,29 @@ export interface SearchResult {
   volume_6h: number;
   volume_12h: number;
   volume_24h: number;
+  jupiter?: boolean;
+  verified?: boolean;
+  top10?: number;
+  dev?: number;
+  insiders?: number;
+  snipers?: number;
+  socials?: {
+    twitter?: string;
+    telegram?: string;
+    discord?: string;
+    website?: string;
+    facebook?: string;
+    instagram?: string;
+    youtube?: string;
+    reddit?: string;
+    tiktok?: string;
+    github?: string;
+  };
+  fees?: {
+    total?: number;
+    totalTrading?: number;
+    totalTips?: number;
+  };
   tokenDetails?: {
     creator: string;
     tx: string;
@@ -309,6 +395,11 @@ export interface SearchResult {
 export interface SearchResponse {
   status: string;
   data: SearchResult[];
+  total?: number;
+  pages?: number;
+  page?: number;
+  nextCursor?: string;
+  hasMore?: boolean;
 }
 
 export interface TokenOverview {
@@ -759,4 +850,3 @@ export interface ChartDataParams {
   /** Enable live cache for faster response times (default: false) */
   fastCache?: boolean;
 }
-

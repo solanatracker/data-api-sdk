@@ -11,6 +11,8 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 - Real-time data streaming via WebSocket (Datastream)
 - Built-in error handling with specific error types
 - Compatible with both Node.js and browser environments
+- **NEW**: Enhanced search with 60+ filter parameters including holder distribution, social media, fees, and more
+- **NEW**: Cursor-based pagination for efficient deep searches
 - **NEW**: (Global Fees) Platform and network fees tracking via WebSocket and API
 - **NEW**: Developer/creator holdings tracking via WebSocket
 - **NEW**: Top 10 holders monitoring with real-time percentage updates
@@ -58,6 +60,32 @@ const fetchTokenInfo = async () => {
 
 fetchTokenInfo();
 ```
+
+
+## What's New
+
+### Version Updates
+
+#### Latest Features:
+
+1. **Enhanced Search with 60+ Filters**: 
+   - Holder distribution filters (top10, dev, insiders, snipers)
+   - Social media filters (twitter, telegram, discord, etc.)
+   - Fees filters (total fees, trading fees, priority tips)
+   - Volume filters across multiple timeframes
+   - Token characteristic filters (LP burn, authorities, curve percentage)
+   - Cursor-based pagination for efficient deep searches
+
+2. **Live Stats Subscriptions**: Subscribe to real-time statistics for tokens and pools across all timeframes (1m, 5m, 15m, 30m, 1h, 4h, 24h) using `.stats.token()` and `.stats.pool()` methods
+
+3. **Primary Pool Subscriptions**: Subscribe to only the primary pool for a token using `.primary()` method
+
+4. **Developer Holdings Tracking**: Monitor developer/creator wallet holdings in real-time with `.dev.holding()` method
+
+5. **Top 10 Holders Monitoring**: Track the top 10 holders and their combined percentage of token supply with `.top10()` method
+
+6. **Global Fees Tracking**: Monitor platform and network fees via WebSocket and API
+
 
 ## Real-Time Data Streaming (Premium plan or higher only)
 
@@ -483,14 +511,6 @@ const athPrice = await client.getAthPrice('tokenAddress');
 // Get tokens by deployer wallet
 const deployerTokens = await client.getTokensByDeployer('walletAddress');
 
-// Search for tokens
-const searchResults = await client.searchTokens({
-  query: 'SOL',
-  minLiquidity: 100000,
-  sortBy: 'marketCapUsd',
-  sortOrder: 'desc',
-});
-
 // Get latest tokens
 const latestTokens = await client.getLatestTokens(100);
 
@@ -512,6 +532,332 @@ const tokenOverview = await client.getTokenOverview();
 
 // Get graduated tokens
 const graduatedTokens = await client.getGraduatedTokens();
+```
+
+### Advanced Token Search (NEW - Enhanced!)
+
+The `searchTokens` method now supports **60+ filter parameters** for precise token discovery:
+
+```typescript
+// Basic search with query
+const basicSearch = await client.searchTokens({
+  query: 'TRUMP',
+  limit: 50,
+  sortBy: 'marketCapUsd',
+  sortOrder: 'desc',
+});
+
+// Search by exact symbol
+const symbolSearch = await client.searchTokens({
+  symbol: 'TRUMP',
+  minLiquidity: 1000000,
+});
+
+// Filter by holder distribution - Find tokens with decentralized ownership
+const decentralizedTokens = await client.searchTokens({
+  maxDev: 5, // Dev holds max 5%
+  maxTop10: 20, // Top 10 holders max 20%
+  maxInsiders: 10, // Insiders max 10%
+  maxSnipers: 5, // Snipers max 5%
+  minHolders: 1000, // At least 1000 holders
+  minLiquidity: 50000,
+  sortBy: 'holders',
+  sortOrder: 'desc',
+});
+
+// Find graduating Pump.fun tokens
+const graduatingTokens = await client.searchTokens({
+  market: 'pumpfun',
+  minCurvePercentage: 80,
+  maxCurvePercentage: 99,
+  sortBy: 'curvePercentage',
+  sortOrder: 'desc',
+});
+
+// Search by social media presence
+const tokensWithTwitter = await client.searchTokens({
+  twitter: 'https://x.com/realDonaldTrump',
+  minLiquidity: 10000,
+});
+
+// Find highly active tokens by fees
+const activeTokens = await client.searchTokens({
+  minFeesTotal: 100, // At least 100 SOL in total fees
+  minFeesTrading: 50, // At least 50 SOL in trading fees
+  sortBy: 'fees.total',
+  sortOrder: 'desc',
+  limit: 20,
+});
+
+// Filter by volume across different timeframes
+const highVolumeTokens = await client.searchTokens({
+  minVolume_24h: 100000, // At least $100k volume in 24h
+  minVolume_1h: 10000, // At least $10k volume in 1h
+  minLiquidity: 50000,
+  sortBy: 'volume_24h',
+  sortOrder: 'desc',
+});
+
+// Filter by transaction activity
+const popularTokens = await client.searchTokens({
+  minBuys: 100,
+  minSells: 50,
+  minTotalTransactions: 150,
+  minHolders: 500,
+  sortBy: 'totalTransactions',
+  sortOrder: 'desc',
+});
+
+// Find tokens with specific token characteristics
+const safeTokens = await client.searchTokens({
+  freezeAuthority: 'null', // No freeze authority
+  mintAuthority: 'null', // No mint authority
+  lpBurn: 100, // 100% LP burned
+  minLiquidity: 25000,
+  sortBy: 'liquidityUsd',
+  sortOrder: 'desc',
+});
+
+// Search by creator wallet
+const creatorTokens = await client.searchTokens({
+  creator: 'CreatorWalletAddress',
+  sortBy: 'createdAt',
+  sortOrder: 'desc',
+});
+
+// Cursor-based pagination (faster for deep pagination)
+let allResults = [];
+let cursor = undefined;
+
+do {
+  const results = await client.searchTokens({
+    minLiquidity: 5000,
+    limit: 100,
+    cursor: cursor,
+  });
+
+  allResults = allResults.concat(results.data);
+  cursor = results.nextCursor;
+} while (cursor && results.hasMore);
+
+console.log(`Found ${allResults.length} tokens`);
+
+// Complex multi-filter search
+const customSearch = await client.searchTokens({
+  // Liquidity and Market Cap
+  minLiquidity: 100000,
+  maxLiquidity: 10000000,
+  minMarketCap: 500000,
+  maxMarketCap: 50000000,
+
+  // Holder Distribution
+  minHolders: 500,
+  maxTop10: 30,
+  maxDev: 10,
+  maxInsiders: 15,
+  maxSnipers: 5,
+
+  // Volume (24h)
+  minVolume_24h: 50000,
+
+  // Transaction Activity
+  minBuys: 50,
+  minTotalTransactions: 100,
+
+  // Token Characteristics
+  freezeAuthority: 'null',
+  mintAuthority: 'null',
+  lpBurn: 100,
+
+  // Fees (indicates active trading)
+  minFeesTotal: 10,
+
+  // Sorting and Pagination
+  sortBy: 'volume_24h',
+  sortOrder: 'desc',
+  limit: 50,
+  showPriceChanges: true,
+});
+```
+
+#### Search Parameters Reference
+
+**Search & Pagination:**
+
+- `query` - Search term for token symbol, name, or address
+- `symbol` - Search for tokens with exact symbol match
+- `page` - Page number for offset-based pagination (1-based)
+- `limit` - Results per page (default: 100, max: 500)
+- `cursor` - Cursor for cursor-based pagination (faster for deep searches)
+- `sortBy` - Field to sort by (see sortable fields below)
+- `sortOrder` - Sort order: `'asc'` or `'desc'`
+- `showAllPools` - Return all pools for each token (default: false)
+- `showPriceChanges` - Include price change data in response (default: false)
+
+**Sortable Fields:**
+
+- Market data: `liquidityUsd`, `marketCapUsd`, `priceUsd`, `volume`, `volume_5m`, `volume_15m`, `volume_30m`, `volume_1h`, `volume_6h`, `volume_12h`, `volume_24h`
+- Holder distribution: `top10`, `dev`, `insiders`, `snipers`, `holders`
+- Trading activity: `buys`, `sells`, `totalTransactions`
+- Fees: `fees.total`, `fees.totalTrading`, `fees.totalTips`
+- Other: `createdAt`, `lpBurn`, `curvePercentage`
+
+**Creation Filters:**
+
+- `minCreatedAt` - Minimum creation date (unix timestamp in ms)
+- `maxCreatedAt` - Maximum creation date (unix timestamp in ms)
+
+**Liquidity & Market Cap Filters:**
+
+- `minLiquidity` - Minimum liquidity in USD
+- `maxLiquidity` - Maximum liquidity in USD (capped at $100B)
+- `minMarketCap` - Minimum market cap in USD
+- `maxMarketCap` - Maximum market cap in USD (capped at $5T)
+
+**Volume Filters:**
+
+- `minVolume` / `maxVolume` - General volume filters
+- `volumeTimeframe` - Timeframe for volume: `'5m'`, `'15m'`, `'30m'`, `'1h'`, `'6h'`, `'12h'`, `'24h'`
+- Timeframe-specific: `minVolume_5m`, `maxVolume_5m`, `minVolume_15m`, `maxVolume_15m`, `minVolume_30m`, `maxVolume_30m`, `minVolume_1h`, `maxVolume_1h`, `minVolume_6h`, `maxVolume_6h`, `minVolume_12h`, `maxVolume_12h`, `minVolume_24h`, `maxVolume_24h`
+
+**Transaction Filters:**
+
+- `minBuys` / `maxBuys` - Filter by number of buy transactions
+- `minSells` / `maxSells` - Filter by number of sell transactions
+- `minTotalTransactions` / `maxTotalTransactions` - Filter by total transactions
+
+**Holder Filters:**
+
+- `minHolders` / `maxHolders` - Filter by total holder count
+- `minTop10` / `maxTop10` - Filter by % held by top 10 holders (0-100)
+- `minDev` / `maxDev` - Filter by % held by developer (0-100)
+- `minInsiders` / `maxInsiders` - Filter by % held by insiders (0-100)
+- `minSnipers` / `maxSnipers` - Filter by % held by snipers (0-100)
+
+**Token Characteristics:**
+
+- `lpBurn` - LP token burn percentage (0-100)
+- `market` - Market identifier (e.g., `'pumpfun'`, `'raydium'`, `'meteora-dlmm'`)
+- `freezeAuthority` - Freeze authority address (use `'null'` for none)
+- `mintAuthority` - Mint authority address (use `'null'` for none)
+- `deployer` - Deployer wallet address
+- `creator` - Token creator wallet address
+- `status` - Token status (`'graduating'`, `'graduated'`, `'default'`)
+- `minCurvePercentage` / `maxCurvePercentage` - Bonding curve % (0-100)
+
+**Social Media Filters (exact match):**
+
+- `twitter` - Twitter/X profile URL
+- `telegram` - Telegram channel/group URL
+- `discord` - Discord server invite URL
+- `website` - Official website URL
+- `facebook` - Facebook page URL
+- `instagram` - Instagram profile URL
+- `youtube` - YouTube channel URL
+- `reddit` - Reddit community URL
+- `tiktok` - TikTok profile URL
+- `github` - GitHub repository URL
+
+**Fees Filters (in SOL):**
+
+- `minFeesTotal` / `maxFeesTotal` - Total fees paid
+- `minFeesTrading` / `maxFeesTrading` - Trading fees paid
+- `minFeesTips` / `maxFeesTips` - Priority fees/tips paid
+
+#### Search Response
+
+The search response includes pagination information and detailed token data:
+
+```typescript
+interface SearchResponse {
+  status: string;
+  data: SearchResult[]; // Array of token results
+  total?: number; // Total number of results
+  pages?: number; // Total number of pages
+  page?: number; // Current page number
+  nextCursor?: string; // Cursor for next page (cursor-based pagination)
+  hasMore?: boolean; // Whether there are more results
+}
+
+interface SearchResult {
+  // Basic token info
+  name: string;
+  symbol: string;
+  mint: string;
+  image?: string;
+  decimals: number;
+
+  // Pool and market info
+  poolAddress: string;
+  market: string;
+  quoteToken: string;
+
+  // Price and liquidity
+  liquidityUsd: number;
+  marketCapUsd: number;
+  priceUsd: number;
+
+  // Trading activity
+  buys: number;
+  sells: number;
+  totalTransactions: number;
+  volume: number;
+  volume_5m: number;
+  volume_15m: number;
+  volume_30m: number;
+  volume_1h: number;
+  volume_6h: number;
+  volume_12h: number;
+  volume_24h: number;
+
+  // Holder information
+  holders: number;
+  top10?: number; // NEW: % held by top 10 holders
+  dev?: number; // NEW: % held by developer
+  insiders?: number; // NEW: % held by insiders
+  snipers?: number; // NEW: % held by snipers
+
+  // Verification
+  jupiter?: boolean; // NEW: Jupiter verification status
+  verified?: boolean; // NEW: General verification status
+
+  // Token characteristics
+  lpBurn: number;
+  freezeAuthority: string | null;
+  mintAuthority: string | null;
+  deployer: string;
+  status: string;
+  createdAt: number;
+  lastUpdated: number;
+
+  // Social media - NEW
+  socials?: {
+    twitter?: string;
+    telegram?: string;
+    discord?: string;
+    website?: string;
+    facebook?: string;
+    instagram?: string;
+    youtube?: string;
+    reddit?: string;
+    tiktok?: string;
+    github?: string;
+  };
+
+  // Fees information - NEW
+  fees?: {
+    total?: number; // Total fees in SOL
+    totalTrading?: number; // Trading fees in SOL
+    totalTips?: number; // Priority fees/tips in SOL
+  };
+
+  // Token creation details
+  tokenDetails?: {
+    creator: string;
+    tx: string;
+    time: number;
+  };
+}
 ```
 
 ### Price Endpoints
@@ -756,20 +1102,45 @@ try {
 }
 ```
 
-## What's New
-
-### Version Updates
-
-#### New Features:
-
-1. **Live Stats Subscriptions**: Subscribe to real-time statistics for tokens and pools across all timeframes (1m, 5m, 15m, 30m, 1h, 4h, 24h) using `.stats.token()` and `.stats.pool()` methods
-2. **Primary Pool Subscriptions**: Subscribe to only the primary pool for a token using `.primary()` method
-3. **Developer Holdings Tracking**: Monitor developer/creator wallet holdings in real-time with `.dev.holding()` method
-4. **Top 10 Holders Monitoring**: Track the top 10 holders and their combined percentage of token supply with `.top10()` method
-
 #### Type Updates:
 
 ```typescript
+// NEW: Enhanced SearchResult with holder distribution
+interface SearchResult {
+  // ... existing fields
+  top10?: number; // % held by top 10 holders
+  dev?: number; // % held by developer
+  insiders?: number; // % held by insiders
+  snipers?: number; // % held by snipers
+  jupiter?: boolean; // Jupiter verification
+  verified?: boolean; // General verification
+  
+  socials?: {
+    twitter?: string;
+    telegram?: string;
+    discord?: string;
+    website?: string;
+    // ... more social media links
+  };
+  
+  fees?: {
+    total?: number; // Total fees in SOL
+    totalTrading?: number; // Trading fees in SOL
+    totalTips?: number; // Priority tips in SOL
+  };
+}
+
+// NEW: Enhanced SearchResponse with pagination
+interface SearchResponse {
+  status: string;
+  data: SearchResult[];
+  total?: number;
+  pages?: number;
+  page?: number;
+  nextCursor?: string; // For cursor-based pagination
+  hasMore?: boolean;
+}
+
 // NEW: Developer holding update structure
 interface DevHoldingUpdate {
   token: string;
