@@ -384,9 +384,6 @@ class StatsSubscriptions {
   }
 }
 
-/**
- * Price-related subscription methods
- */
 class PriceSubscriptions {
   private ds: Datastream;
 
@@ -395,10 +392,25 @@ class PriceSubscriptions {
   }
 
   /**
+   * Subscribe to aggregated price updates for a token across all pools
+   * Provides median, average, min, max prices and top pools by liquidity
+   * @param tokenAddress The token address
+   */
+  aggregated(tokenAddress: string): SubscribeResponse<AggregatedPriceUpdate> {
+    return this.ds._subscribe<AggregatedPriceUpdate>(`price:aggregated:${tokenAddress}`);
+  }
+
+  /**
+   * @deprecated Use aggregated() instead for better price data across all pools
    * Subscribe to price updates for a token's primary/largest pool
    * @param tokenAddress The token address
    */
   token(tokenAddress: string): SubscribeResponse<PriceUpdate> {
+    console.warn(
+      'datastream.subscribe.price.token() is deprecated. ' +
+      'Please use datastream.subscribe.price.aggregated() instead for more accurate price data. ' +
+      'This method will be removed in a future version.'
+    );
     return this.ds._subscribe<PriceUpdate>(`price-by-token:${tokenAddress}`);
   }
 
@@ -659,6 +671,7 @@ export class Datastream extends EventEmitter {
         }, 10000);
 
         const handler = (e: MessageEvent<WorkerResponse>) => {
+          console.log('Worker message:', e.data);
           if (e.data.type === 'connected') {
             clearTimeout(timeout);
             this.worker?.removeEventListener('message', handler);
@@ -732,196 +745,203 @@ export class Datastream extends EventEmitter {
     }
 
     // Special handling for price events
-    if (room.includes('price:')) {
+    if (room.includes('price:') && !room.includes('price:aggregated')) {
       this.emit(`price-by-token:${message.token}`, message);
     }
 
 
-    // If this is a pool message, also emit on token:primary if subscribed
-    if (room.startsWith('pool:') && message.tokenAddress) {
-      const primaryRoom = `token:${message.tokenAddress}:primary`;
-      if (this.subscribedRooms.has(primaryRoom)) {
-        this.emit(primaryRoom, message);
-      }
-    }
-
     this.emit(room, message);
   }
 
-  /**
-   * Gets the worker code as a string
-   */
-  private getWorkerCode(): string {
-    return `
-            let mainSocket = null;
-            let transactionSocket = null;
-            let config = {};
-            let reconnectAttempts = 0;
-            let subscribedRooms = new Set();
-            let transactions = new Set();
+ private getWorkerCode(): string {
+  return `
+    let mainSocket = null;
+    let transactionSocket = null;
+    let config = {};
+    let reconnectAttempts = 0;
+    let subscribedRooms = new Set();
+    let transactions = new Set();
 
-            self.addEventListener('message', (event) => {
-                const { type, data } = event.data;
+    self.addEventListener('message', (event) => {
+      const { type, data } = event.data;
 
-                switch (type) {
-                    case 'connect':
-                        config = data;
-                        connect();
-                        break;
-                    case 'disconnect':
-                        disconnect();
-                        break;
-                    case 'subscribe':
-                        subscribe(data.room);
-                        break;
-                    case 'unsubscribe':
-                        unsubscribe(data.room);
-                        break;
-                    case 'send':
-                        send(data.socket, data.message);
-                        break;
-                }
-            });
+      switch (type) {
+        case 'connect':
+          config = data;
+          connect();
+          break;
+        case 'disconnect':
+          disconnect();
+          break;
+        case 'subscribe':
+          subscribe(data.room);
+          break;
+        case 'unsubscribe':
+          unsubscribe(data.room);
+          break;
+        case 'send':
+          send(data.socket, data.message);
+          break;
+      }
+    });
 
-            async function connect() {
-                try {
-                    await Promise.all([
-                        createSocket('main'),
-                        createSocket('transaction')
-                    ]);
-                    self.postMessage({ type: 'connected' });
-                } catch (e) {
-                    self.postMessage({ type: 'error', data: e.message });
-                    if (config.autoReconnect) {
-                        reconnect();
-                    }
-                }
+    async function connect() {
+      try {
+        await Promise.all([
+          createSocket('main'),
+          createSocket('transaction')
+        ]);
+        self.postMessage({ type: 'connected' });
+        resubscribeToRooms();
+      } catch (e) {
+        self.postMessage({ type: 'error', data: e.message });
+        if (config.autoReconnect) {
+          reconnect();
+        }
+      }
+    }
+
+    function createSocket(type) {
+      return new Promise((resolve, reject) => {
+        try {
+          const socket = new WebSocket(config.wsUrl);
+
+          socket.onopen = () => {
+            if (type === 'main') {
+              mainSocket = socket;
+            } else {
+              transactionSocket = socket;
             }
+            reconnectAttempts = 0;
+            setupSocketListeners(socket, type);
+            resolve();
+          };
 
-            function createSocket(type) {
-                return new Promise((resolve, reject) => {
-                    try {
-                        const socket = new WebSocket(config.wsUrl);
+          socket.onerror = (error) => {
+            reject(error);
+          };
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }
 
-                        socket.onopen = () => {
-                            if (type === 'main') {
-                                mainSocket = socket;
-                            } else {
-                                transactionSocket = socket;
-                            }
-                            reconnectAttempts = 0;
-                            setupSocketListeners(socket, type);
-                            resubscribeToRooms();
-                            resolve();
-                        };
-
-                        socket.onerror = (error) => {
-                            reject(error);
-                        };
-                    } catch (e) {
-                        reject(e);
-                    }
+    function setupSocketListeners(socket, type) {
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === 'message') {
+            // Handle primary pool routing
+            if (message.room && message.room.indexOf('pool:') === 0 && message.data && message.data.tokenAddress) {
+              const primaryRoom = 'token:' + message.data.tokenAddress + ':primary';
+              const roomsArray = Array.from(subscribedRooms);
+              if (roomsArray.indexOf(primaryRoom) !== -1) {
+                self.postMessage({
+                  type: 'message',
+                  data: {
+                    room: primaryRoom,
+                    message: message.data
+                  }
                 });
+              }
             }
+            
+            // Send the original message
+            self.postMessage({
+              type: 'message',
+              data: {
+                room: message.room,
+                message: message.data
+              }
+            });
+          }
+        } catch (error) {
+          self.postMessage({ type: 'error', data: error.message });
+        }
+      };
 
-            function setupSocketListeners(socket, type) {
-                socket.onmessage = (event) => {
-                    try {
-                        const message = JSON.parse(event.data);
-                        if (message.type === 'message') {
-                            self.postMessage({
-                                type: 'message',
-                                data: {
-                                    room: message.room,
-                                    message: message.data
-                                }
-                            });
-                        }
-                    } catch (error) {
-                        self.postMessage({ type: 'error', data: error.message });
-                    }
-                };
+      socket.onclose = () => {
+        if (type === 'main') {
+          mainSocket = null;
+        } else if (type === 'transaction') {
+          transactionSocket = null;
+        }
 
-                socket.onclose = () => {
-                    if (type === 'main') {
-                        mainSocket = null;
-                    } else if (type === 'transaction') {
-                        transactionSocket = null;
-                    }
+        self.postMessage({ type: 'disconnected', socketType: type });
 
-                    self.postMessage({ type: 'disconnected', socketType: type });
+        if (config.autoReconnect) {
+          reconnect();
+        }
+      };
+    }
 
-                    if (config.autoReconnect) {
-                        reconnect();
-                    }
-                };
-            }
+    function disconnect() {
+      if (mainSocket) {
+        mainSocket.close();
+        mainSocket = null;
+      }
+      if (transactionSocket) {
+        transactionSocket.close();
+        transactionSocket = null;
+      }
+      subscribedRooms.clear();
+      transactions.clear();
+      self.postMessage({ type: 'disconnected', socketType: 'all' });
+    }
 
-            function disconnect() {
-                if (mainSocket) {
-                    mainSocket.close();
-                    mainSocket = null;
-                }
-                if (transactionSocket) {
-                    transactionSocket.close();
-                    transactionSocket = null;
-                }
-                subscribedRooms.clear();
-                transactions.clear();
-                self.postMessage({ type: 'disconnected', socketType: 'all' });
-            }
+    function reconnect() {
+      self.postMessage({ type: 'reconnecting', data: reconnectAttempts });
 
-            function reconnect() {
-                self.postMessage({ type: 'reconnecting', data: reconnectAttempts });
+      const delay = Math.min(
+        config.reconnectDelay * Math.pow(2, reconnectAttempts),
+        config.reconnectDelayMax
+      );
 
-                const delay = Math.min(
-                    config.reconnectDelay * Math.pow(2, reconnectAttempts),
-                    config.reconnectDelayMax
-                );
+      const jitter = delay * config.randomizationFactor;
+      const reconnectDelay = delay + Math.random() * jitter;
 
-                const jitter = delay * config.randomizationFactor;
-                const reconnectDelay = delay + Math.random() * jitter;
+      setTimeout(() => {
+        reconnectAttempts++;
+        connect();
+      }, reconnectDelay);
+    }
 
-                setTimeout(() => {
-                    reconnectAttempts++;
-                    connect();
-                }, reconnectDelay);
-            }
+    function subscribe(room) {
+      subscribedRooms.add(room);
+      const socket = room.indexOf('transaction') !== -1 ? transactionSocket : mainSocket;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'join', room: room }));
+      }
+    }
 
-            function subscribe(room) {
-                subscribedRooms.add(room);
-                const socket = room.includes('transaction') ? transactionSocket : mainSocket;
-                if (socket && socket.readyState === WebSocket.OPEN) {
-                    socket.send(JSON.stringify({ type: 'join', room }));
-                }
-            }
+    function unsubscribe(room) {
+      subscribedRooms.delete(room);
+      const socket = room.indexOf('transaction') !== -1 ? transactionSocket : mainSocket;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'leave', room: room }));
+      }
+    }
 
-            function unsubscribe(room) {
-                subscribedRooms.delete(room);
-                const socket = room.includes('transaction') ? transactionSocket : mainSocket;
-                if (socket && socket.readyState === WebSocket.OPEN) {
-                    socket.send(JSON.stringify({ type: 'leave', room }));
-                }
-            }
+    function send(socketType, message) {
+      const socket = socketType === 'transaction' ? transactionSocket : mainSocket;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(message);
+      }
+    }
 
-            function send(socketType, message) {
-                const socket = socketType === 'transaction' ? transactionSocket : mainSocket;
-                if (socket && socket.readyState === WebSocket.OPEN) {
-                    socket.send(message);
-                }
-            }
-
-            function resubscribeToRooms() {
-                if (mainSocket && mainSocket.readyState === WebSocket.OPEN &&
-                    transactionSocket && transactionSocket.readyState === WebSocket.OPEN) {
-                    for (const room of subscribedRooms) {
-                        const socket = room.includes('transaction') ? transactionSocket : mainSocket;
-                        socket.send(JSON.stringify({ type: 'join', room }));
-                    }
-                }
-            }
-        `;
-  }
+    function resubscribeToRooms() {
+      if (mainSocket && mainSocket.readyState === WebSocket.OPEN &&
+          transactionSocket && transactionSocket.readyState === WebSocket.OPEN) {
+        var rooms = Array.from(subscribedRooms);
+        for (var i = 0; i < rooms.length; i++) {
+          var room = rooms[i];
+          var socket = room.indexOf('transaction') !== -1 ? transactionSocket : mainSocket;
+          socket.send(JSON.stringify({ type: 'join', room: room }));
+        }
+      }
+    }
+  `;
+}
 
   /**
    * Creates a WebSocket connection
@@ -975,17 +995,6 @@ export class Datastream extends EventEmitter {
             this.transactions.add(message.data.tx);
           }
 
-          // Special handling for price events
-          if (message.room.includes('price:')) {
-            this.emit(`price-by-token:${message.data.token}`, message.data);
-          }
-
-          if (message.room.startsWith('pool:') && message.data.tokenAddress) {
-            const primaryRoom = `token:${message.data.tokenAddress}:primary`;
-            if (this.subscribedRooms.has(primaryRoom)) {
-              this.emit(primaryRoom, message.data);
-            }
-          }
 
           this.emit(message.room, message.data);
         }
@@ -1451,4 +1460,24 @@ export interface FeesUpdate {
   fees: TransactionFees;
   tx: string;
   time: number;
+}
+
+export interface AggregatedPriceUpdate {
+  token: string;
+  timestamp: number;
+  price: number;
+  pool: string;
+  aggregated: {
+    median: number;
+    average: number;
+    min: number;
+    max: number;
+    poolCount: number;
+  };
+  topPools: Array<{
+    poolId: string;
+    price: number;
+    liquidity: number;
+    market: string;
+  }>;
 }

@@ -126,6 +126,14 @@ export interface PoolInfo {
     is_migrated: boolean;
     migrationTime?: number; 
   };
+  pumpfun?: {
+    tokenProgram?: string;
+    isMayhemMode?: boolean;
+  };
+  'pumpfun-amm'?: {
+    tokenProgram?: string;
+    isMayhemMode?: boolean;
+  };
 }
 
 export interface PriceChangeData {
@@ -849,4 +857,26 @@ export interface ChartDataParams {
   timezone?: string | 'current';
   /** Enable live cache for faster response times (default: false) */
   fastCache?: boolean;
+}
+
+/**
+ * Represents a holder in the paginated response with account address
+ */
+export interface PaginatedHolder {
+  wallet: string;
+  account: string;
+  amount: number;
+  value: TokenValuePair;
+  percentage: number;
+}
+
+/**
+ * Response for paginated token holders endpoint
+ */
+export interface PaginatedTokenHoldersResponse {
+  total: number;
+  accounts: PaginatedHolder[];
+  cursor: string;
+  hasMore: boolean;
+  limit: number;
 }

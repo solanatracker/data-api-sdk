@@ -11,11 +11,15 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 - Real-time data streaming via WebSocket (Datastream)
 - Built-in error handling with specific error types
 - Compatible with both Node.js and browser environments
-- **NEW**: Enhanced search with 60+ filter parameters including holder distribution, social media, fees, and more
-- **NEW**: Cursor-based pagination for efficient deep searches
-- **NEW**: (Global Fees) Platform and network fees tracking via WebSocket and API
-- **NEW**: Developer/creator holdings tracking via WebSocket
-- **NEW**: Top 10 holders monitoring with real-time percentage updates
+- Enhanced search with 60+ filter parameters including holder distribution, social media, fees, and more
+- Cursor-based pagination for efficient deep searches
+- **NEW**: Token filtering for overview endpoints (Memescope / Pulse overview) (graduated, graduating, latest)
+- **NEW**: Paginated token holders endpoint for efficient holder data retrieval (5000 per page limit)
+- **NEW**: Aggregated price updates across all pools for a token via WebSocket (min, median, max, average, top pools setc.)
+- **NEW**: Smart primary pool routing - automatically switches to new main pool (price-by-token, token:{token}:primary rooms)
+- (Global Fees) Platform and network fees tracking via WebSocket and API
+- Developer/creator holdings tracking via WebSocket
+- Top 10 holders monitoring with real-time percentage updates
 - Live stats subscriptions for tokens and pools
 - Primary pool subscriptions for token updates
 - Wallet balance subscription API
@@ -68,7 +72,28 @@ fetchTokenInfo();
 
 #### Latest Features:
 
-1. **Enhanced Search with 60+ Filters**: 
+1. **Enhanced Token Overview with Advanced Filtering**: 
+   - Filter latest, graduating, and graduated tokens by liquidity, market cap, risk score, and specific markets
+   - Support for spam reduction and holder count filtering
+   - Backward compatible with simple limit parameter
+
+2. **Paginated Token Holders**:
+   - Efficient pagination through large holder lists
+   - Support for up to 5000 holders per request
+   - Cursor-based navigation for seamless data retrieval
+
+3. **Aggregated Price Updates (WebSocket)**:
+   - Get accurate price data aggregated across all pools
+   - Median, average, min, and max prices
+   - Top pools by liquidity automatically identified
+   - Replaces deprecated `price.token()` method
+
+4. **Smart Primary Pool Routing**:
+   - Automatic switching to new primary pools when liquidity migrates
+   - Works for both `token:primary` and `price-by-token` subscriptions
+   - No code changes needed - happens automatically
+
+5. **Enhanced Search with 60+ Filters**: 
    - Holder distribution filters (top10, dev, insiders, snipers)
    - Social media filters (twitter, telegram, discord, etc.)
    - Fees filters (total fees, trading fees, priority tips)
@@ -76,15 +101,13 @@ fetchTokenInfo();
    - Token characteristic filters (LP burn, authorities, curve percentage)
    - Cursor-based pagination for efficient deep searches
 
-2. **Live Stats Subscriptions**: Subscribe to real-time statistics for tokens and pools across all timeframes (1m, 5m, 15m, 30m, 1h, 4h, 24h) using `.stats.token()` and `.stats.pool()` methods
+6. **Live Stats Subscriptions**: Subscribe to real-time statistics for tokens and pools across all timeframes (1m, 5m, 15m, 30m, 1h, 4h, 24h) using `.stats.token()` and `.stats.pool()` methods
 
-3. **Primary Pool Subscriptions**: Subscribe to only the primary pool for a token using `.primary()` method
+7. **Developer Holdings Tracking**: Monitor developer/creator wallet holdings in real-time with `.dev.holding()` method
 
-4. **Developer Holdings Tracking**: Monitor developer/creator wallet holdings in real-time with `.dev.holding()` method
+8. **Top 10 Holders Monitoring**: Track the top 10 holders and their combined percentage of token supply with `.top10()` method
 
-5. **Top 10 Holders Monitoring**: Track the top 10 holders and their combined percentage of token supply with `.top10()` method
-
-6. **Global Fees Tracking**: Monitor platform and network fees via WebSocket and API
+9. **Global Fees Tracking**: Monitor platform and network fees via WebSocket and API
 
 
 ## Real-Time Data Streaming (Premium plan or higher only)
@@ -114,14 +137,24 @@ dataStream.subscribe.latest().on((tokenData) => {
   console.log('New token created:', tokenData.token.name);
 });
 
-// Example 2: Track a specific token's price with type-safe data
+// Example 2: NEW - Get accurate aggregated price across all pools
 const tokenAddress = '6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN'; // TRUMP token
-dataStream.subscribe.price.token(tokenAddress).on((priceData) => {
-  console.log(`New price: $${priceData.price}`);
-  console.log(`Time: ${new Date(priceData.time).toLocaleTimeString()}`);
+dataStream.subscribe.price.aggregated(tokenAddress).on((priceData) => {
+  console.log(`Aggregated price: $${priceData.aggregated.median}`);
+  console.log(`Price range: $${priceData.aggregated.min} - $${priceData.aggregated.max}`);
+  console.log(`Active pools: ${priceData.aggregated.poolCount}`);
+  console.log('Top pools by liquidity:', priceData.topPools);
 });
 
-// Example 3: Subscribe to token transactions with stored subscription reference
+// Example 3: Subscribe to primary pool updates (automatically switches to new main pool)
+dataStream.subscribe.token(tokenAddress).primary().on((poolUpdate) => {
+  console.log('Primary pool update (automatically switches to new main pool):');
+  console.log(`Price: $${poolUpdate.price.usd}`);
+  console.log(`Liquidity: $${poolUpdate.liquidity.usd}`);
+  console.log(`Pool: ${poolUpdate.poolId}`);
+});
+
+// Example 4: Subscribe to token transactions with stored subscription reference
 const txSubscription = dataStream.subscribe.tx
   .token(tokenAddress)
   .on((transaction) => {
@@ -133,19 +166,19 @@ const txSubscription = dataStream.subscribe.tx
 // Later, unsubscribe from transactions
 txSubscription.unsubscribe();
 
-// Example 4: Monitor holder count for a token
+// Example 5: Monitor holder count for a token
 dataStream.subscribe.holders(tokenAddress).on((holderData) => {
   console.log(`Total holders: ${holderData.total}`);
 });
 
-// Example 5: Watch for wallet transactions
+// Example 6: Watch for wallet transactions
 const walletAddress = 'YourWalletAddressHere';
 dataStream.subscribe.tx.wallet(walletAddress).on((walletTx) => {
   console.log(`${walletTx.type === 'buy' ? 'Bought' : 'Sold'} token`);
   console.log(`Volume: ${walletTx.volume} USD`);
 });
 
-// Example 6: Subscribe to curve percentage updates
+// Example 7: Subscribe to curve percentage updates
 dataStream.subscribe.curvePercentage('pumpfun', 30).on((data) => {
   console.log(`Token ${data.token.symbol} reached 30% on Pump.fun`);
   console.log(`Market cap: ${data.pools[0].marketCap.usd}`);
@@ -156,7 +189,7 @@ dataStream.subscribe.curvePercentage('meteora-curve', 75).on((data) => {
   console.log(`Meteora token at 75%: ${data.token.name}`);
 });
 
-// Example 7: NEW - Monitor snipers for a token
+// Example 8: NEW - Monitor snipers for a token
 dataStream.subscribe.snipers(tokenAddress).on((sniperUpdate) => {
   console.log(`Sniper wallet: ${sniperUpdate.wallet}`);
   console.log(`Token amount: ${sniperUpdate.tokenAmount.toLocaleString()}`);
@@ -166,7 +199,7 @@ dataStream.subscribe.snipers(tokenAddress).on((sniperUpdate) => {
   );
 });
 
-// Example 8: NEW - Monitor insiders for a token
+// Example 9: NEW - Monitor insiders for a token
 dataStream.subscribe.insiders(tokenAddress).on((insiderUpdate) => {
   console.log(`Insider wallet: ${insiderUpdate.wallet}`);
   console.log(`Token amount: ${insiderUpdate.tokenAmount.toLocaleString()}`);
@@ -176,7 +209,7 @@ dataStream.subscribe.insiders(tokenAddress).on((insiderUpdate) => {
   );
 });
 
-// Example 9: NEW - Monitor wallet balance changes (new API location)
+// Example 10: NEW - Monitor wallet balance changes (new API location)
 const walletAddress = 'YourWalletAddressHere';
 
 // Watch all token balance changes for a wallet
@@ -195,25 +228,6 @@ dataStream.subscribe
   .tokenBalance('tokenMint')
   .on((balanceUpdate) => {
     console.log(`Token balance changed to: ${balanceUpdate.amount}`);
-  });
-
-// Example 10: NEW - Subscribe to primary pool updates for a token
-dataStream.subscribe
-  .token(tokenAddress)
-  .primary()
-  .on((poolUpdate) => {
-    console.log('Primary pool update:');
-    console.log(`Price: $${poolUpdate.price.usd}`);
-    console.log(`Liquidity: $${poolUpdate.liquidity.usd}`);
-    console.log(`Market Cap: $${poolUpdate.marketCap.usd}`);
-  });
-
-// Can also subscribe to all pools (default behavior)
-dataStream.subscribe
-  .token(tokenAddress)
-  .all()
-  .on((poolUpdate) => {
-    console.log(`Pool ${poolUpdate.poolId} updated`);
   });
 
 // Example 11: NEW - Subscribe to live stats for tokens and pools
@@ -339,7 +353,7 @@ Available subscription methods:
 dataStream.subscribe.latest(); // Latest tokens and pools
 dataStream.subscribe.token(tokenAddress); // Token changes (all pools - default)
 dataStream.subscribe.token(tokenAddress).all(); // Token changes (all pools - explicit)
-dataStream.subscribe.token(tokenAddress).primary(); // Token changes (primary pool only) - NEW
+dataStream.subscribe.token(tokenAddress).primary(); // Token changes (primary pool only - auto-switches to new main pool)
 // Developer and Top Holders tracking
 dataStream.subscribe.token(tokenAddress).dev.holding(); // Developer holdings updates
 dataStream.subscribe.token(tokenAddress).top10(); // Top 10 holders updates
@@ -347,7 +361,8 @@ dataStream.subscribe.token(tokenAddress).fees();
 dataStream.subscribe.pool(poolId); // Pool changes
 
 // Price updates
-dataStream.subscribe.price.token(tokenAddress); // Token price (main pool)
+dataStream.subscribe.price.aggregated(tokenAddress); // NEW: Aggregated price across all pools (RECOMMENDED)
+dataStream.subscribe.price.token(tokenAddress); // DEPRECATED: Token price (auto-switches to new main pool)
 dataStream.subscribe.price.allPoolsForToken(tokenAddress); // All price updates for a token
 dataStream.subscribe.price.pool(poolId); // Pool price
 
@@ -386,6 +401,35 @@ Each subscription method returns a response object with:
 - `on()`: Method to attach a listener with proper TypeScript types
   - Returns an object with `unsubscribe()` method for easy cleanup
 
+### Smart Primary Pool Routing
+
+The `token:primary` and `price-by-token` subscriptions now automatically switch to the new primary pool when liquidity migrates:
+
+```typescript
+// Subscribe to primary pool - automatically switches when main pool changes
+dataStream.subscribe.token(tokenAddress).primary().on((poolUpdate) => {
+  console.log('Primary pool update (auto-switches to new main pool):');
+  console.log(`Pool ID: ${poolUpdate.poolId}`);
+  console.log(`Liquidity: $${poolUpdate.liquidity.usd}`);
+  // When liquidity moves to a new pool, you'll automatically get updates from the new pool
+});
+
+// DEPRECATED: price.token() also auto-switches but use price.aggregated() instead
+dataStream.subscribe.price.token(tokenAddress).on((priceData) => {
+  console.log('Price from main pool (auto-switches):');
+  console.log(`Price: $${priceData.price}`);
+  console.log(`Pool: ${priceData.pool}`);
+});
+
+// RECOMMENDED: Use aggregated price for accurate data across all pools
+dataStream.subscribe.price.aggregated(tokenAddress).on((priceData) => {
+  console.log('Aggregated price data:');
+  console.log(`Median: $${priceData.aggregated.median}`);
+  console.log(`Average: $${priceData.aggregated.average}`);
+  console.log(`Range: $${priceData.aggregated.min} - $${priceData.aggregated.max}`);
+});
+```
+
 ### Migration Guide for Balance Updates
 
 The wallet balance subscriptions have been moved to a more intuitive location:
@@ -409,6 +453,21 @@ dataStream.subscribe
 dataStream.subscribe.tx.wallet(walletAddress).on(callback); // Still the correct way for transactions
 ```
 
+### Migration Guide for Price Updates
+
+The `price.token()` method is deprecated in favor of `price.aggregated()`:
+
+```typescript
+// OLD (deprecated - will show warning)
+dataStream.subscribe.price.token(tokenAddress).on(callback);
+
+// NEW (recommended - more accurate across all pools)
+dataStream.subscribe.price.aggregated(tokenAddress).on(callback);
+
+// For specific pool price (still valid)
+dataStream.subscribe.price.pool(poolId).on(callback);
+```
+
 ## WebSocket Data Stream
 
 The `Datastream` class provides real-time access to Solana Tracker data:
@@ -430,8 +489,11 @@ dataStream.on('error', (error) => console.error('Error:', error));
 
 // Data events - Standard approach
 dataStream.on('latest', (data) => console.log('New token:', data));
+dataStream.on(`price:aggregated:${tokenAddress}`, (data) =>
+  console.log('Aggregated price update:', data)
+); // NEW
 dataStream.on(`price-by-token:${tokenAddress}`, (data) =>
-  console.log('Price update:', data)
+  console.log('Price update (deprecated):', data)
 );
 dataStream.on(`transaction:${tokenAddress}`, (data) =>
   console.log('New transaction:', data)
@@ -440,8 +502,8 @@ dataStream.on(`token:${tokenAddress}`, (data) =>
   console.log('Token update (all pools):', data)
 );
 dataStream.on(`token:${tokenAddress}:primary`, (data) =>
-  console.log('Token update (primary pool):', data)
-); // NEW
+  console.log('Token update (primary pool - auto-switches):', data)
+);
 dataStream.on(`sniper:${tokenAddress}`, (data) =>
   console.log('Sniper update:', data)
 );
@@ -450,10 +512,10 @@ dataStream.on(`insider:${tokenAddress}`, (data) =>
 );
 dataStream.on(`stats:token:${tokenAddress}`, (data) =>
   console.log('Token stats:', data)
-); // NEW
+);
 dataStream.on(`stats:pool:${poolId}`, (data) =>
   console.log('Pool stats:', data)
-); // NEW
+);
 
 // Developer and top holders events
 dataStream.on(`dev_holding:${tokenAddress}`, (data) =>
@@ -467,8 +529,8 @@ dataStream.on(`fees:${tokenAddress}`, (data) => console.log('Fees update:', data
 // New approach - Chain .on() directly to subscription
 dataStream.subscribe.latest().on((data) => console.log('New token:', data));
 dataStream.subscribe.price
-  .token(tokenAddress)
-  .on((data) => console.log('Price update:', data));
+  .aggregated(tokenAddress)
+  .on((data) => console.log('Aggregated price:', data)); // NEW
 dataStream.subscribe.tx
   .token(tokenAddress)
   .on((data) => console.log('Transaction:', data));
@@ -480,10 +542,10 @@ dataStream.subscribe
   .on((data) => console.log('Insider:', data));
 dataStream.subscribe.stats
   .token(tokenAddress)
-  .on((data) => console.log('Stats:', data)); // NEW
+  .on((data) => console.log('Stats:', data));
 dataStream.subscribe.stats
   .pool(poolId)
-  .on((data) => console.log('Pool stats:', data)); // NEW
+  .on((data) => console.log('Pool stats:', data));
 ```
 
 ## API Documentation
@@ -501,6 +563,27 @@ const tokenByPool = await client.getTokenByPool('poolAddress');
 
 // Get token holders
 const tokenHolders = await client.getTokenHolders('tokenAddress');
+
+// NEW: Get token holders with pagination (up to 5000 per request)
+const paginatedHolders = await client.getTokenHoldersPaginated(
+  'tokenAddress',
+  100, // limit (optional, default: 100, max: 5000)
+  'cursorFromPreviousRequest' // cursor (optional)
+);
+
+// Access the data
+console.log('Total holders:', paginatedHolders.total);
+console.log('Holders in this page:', paginatedHolders.accounts.length);
+console.log('Has more pages:', paginatedHolders.hasMore);
+
+// Get next page
+if (paginatedHolders.hasMore) {
+  const nextPage = await client.getTokenHoldersPaginated(
+    'tokenAddress',
+    100,
+    paginatedHolders.cursor
+  );
+}
 
 // Get top token holders
 const topHolders = await client.getTopHolders('tokenAddress');
@@ -527,14 +610,105 @@ const trendingTokens = await client.getTrendingTokens('1h');
 // Get tokens by volume
 const volumeTokens = await client.getTokensByVolume('24h');
 
-// Get token overview (latest, graduating, graduated)
-const tokenOverview = await client.getTokenOverview();
+// NEW: Get token overview with advanced filtering
+// Backward compatible - simple limit still works
+const simpleOverview = await client.getTokenOverview(50);
 
-// Get graduated tokens
-const graduatedTokens = await client.getGraduatedTokens();
+// NEW: Advanced filtering with markets and risk scoring
+const filteredOverview = await client.getTokenOverview({
+  limit: 100,
+  minCurve: 60,
+  minHolders: 100,
+  reduceSpam: true,
+  minMarketCap: 100000,
+  markets: ['pumpfun', 'raydium', 'meteora'],
+  minRiskScore: 50,
+  maxRiskScore: 80,
+});
+
+// Returns: { latest: [...], graduating: [...], graduated: [...] }
+
+// NEW: Get graduated tokens with filtering and pagination
+const graduatedTokens = await client.getGraduatedTokens({
+  limit: 100,
+  page: 1,
+  reduceSpam: true,
+  minLiquidity: 50000,
+  markets: ['raydium'],
+  minMarketCap: 1000000,
+});
+
+// NEW: Get graduating tokens with filtering
+const graduatingTokens = await client.getGraduatingTokens({
+  limit: 50,
+  minCurve: 70,
+  maxCurve: 95,
+  minHolders: 50,
+  maxHolders: 500,
+  minMarketCap: 50000,
+  markets: ['pumpfun', 'moonshot'],
+});
 ```
 
-### Advanced Token Search (NEW - Enhanced!)
+### Token Overview Filtering Options
+
+All token overview endpoints (`getTokenOverview`, `getGraduatedTokens`, `getGraduatingTokens`) support these filters:
+
+```typescript
+interface TokenOverviewParams {
+  // Basic parameters
+  limit?: number; // Max results (default: 100, max: 500)
+  
+  // Overview-specific
+  minCurve?: number; // Min curve percentage for graduating tokens
+  minHolders?: number; // Min number of holders for graduating
+  maxHolders?: number; // Max number of holders for graduating
+  reduceSpam?: boolean; // Filter out quick graduated tokens
+  
+  // Graduated-specific
+  page?: number; // Page number for pagination
+  
+  // Graduating-specific
+  minCurve?: number; // Min curve percentage (default: 40)
+  maxCurve?: number; // Max curve percentage (default: 100)
+  
+  // Shared filters
+  minLiquidity?: number; // Minimum liquidity in USD
+  maxLiquidity?: number; // Maximum liquidity in USD
+  minMarketCap?: number; // Minimum market cap in USD
+  maxMarketCap?: number; // Maximum market cap in USD
+  markets?: string[]; // Array of markets: ['pumpfun', 'raydium', 'meteora', etc]
+  minRiskScore?: number; // Minimum risk score (0-100)
+  maxRiskScore?: number; // Maximum risk score (0-100)
+  rugged?: boolean; // Filter by rugged status
+}
+```
+
+**Example: Find safe, high-liquidity graduated tokens**
+```typescript
+const safeTokens = await client.getGraduatedTokens({
+  limit: 50,
+  reduceSpam: true,
+  minLiquidity: 100000,
+  minMarketCap: 500000,
+  markets: ['raydium', 'meteora'],
+  maxRiskScore: 50,
+  rugged: false,
+});
+```
+
+**Example: Monitor tokens about to graduate**
+```typescript
+const nearGraduation = await client.getGraduatingTokens({
+  minCurve: 85,
+  maxCurve: 99,
+  minHolders: 200,
+  minMarketCap: 100000,
+  markets: ['pumpfun'],
+});
+```
+
+### Advanced Token Search (Enhanced!)
 
 The `searchTokens` method now supports **60+ filter parameters** for precise token discovery:
 
@@ -812,14 +986,14 @@ interface SearchResult {
 
   // Holder information
   holders: number;
-  top10?: number; // NEW: % held by top 10 holders
-  dev?: number; // NEW: % held by developer
-  insiders?: number; // NEW: % held by insiders
-  snipers?: number; // NEW: % held by snipers
+  top10?: number; // % held by top 10 holders
+  dev?: number; // % held by developer
+  insiders?: number; // % held by insiders
+  snipers?: number; // % held by snipers
 
   // Verification
-  jupiter?: boolean; // NEW: Jupiter verification status
-  verified?: boolean; // NEW: General verification status
+  jupiter?: boolean; // Jupiter verification status
+  verified?: boolean; // General verification status
 
   // Token characteristics
   lpBurn: number;
@@ -830,7 +1004,7 @@ interface SearchResult {
   createdAt: number;
   lastUpdated: number;
 
-  // Social media - NEW
+  // Social media
   socials?: {
     twitter?: string;
     telegram?: string;
@@ -844,7 +1018,7 @@ interface SearchResult {
     github?: string;
   };
 
-  // Fees information - NEW
+  // Fees information
   fees?: {
     total?: number; // Total fees in SOL
     totalTrading?: number; // Trading fees in SOL
@@ -1058,7 +1232,7 @@ const poolStats = await client.getPoolStats('tokenAddress', 'poolAddress');
 const credits = await client.getCredits();
 console.log('Remaining credits:', credits.credits);
 
-// NEW: Get subscription information
+// Get subscription information
 const subscription = await client.getSubscription();
 console.log('Plan:', subscription.plan);
 console.log('Credits:', subscription.credits);
@@ -1092,7 +1266,7 @@ try {
   } else if (error instanceof DataApiError) {
     console.error('API error:', error.message, 'Status:', error.status);
 
-    // NEW: Access detailed error information
+    // Access detailed error information
     if (error.details) {
       console.error('Error details:', error.details);
     }
@@ -1102,10 +1276,12 @@ try {
 }
 ```
 
+## Type Definitions
+
 #### Type Updates:
 
 ```typescript
-// NEW: Enhanced SearchResult with holder distribution
+// Enhanced SearchResult with holder distribution
 interface SearchResult {
   // ... existing fields
   top10?: number; // % held by top 10 holders
@@ -1130,7 +1306,7 @@ interface SearchResult {
   };
 }
 
-// NEW: Enhanced SearchResponse with pagination
+// Enhanced SearchResponse with pagination
 interface SearchResponse {
   status: string;
   data: SearchResult[];
@@ -1141,7 +1317,48 @@ interface SearchResponse {
   hasMore?: boolean;
 }
 
-// NEW: Developer holding update structure
+// Paginated token holders response
+interface PaginatedTokenHoldersResponse {
+  total: number;
+  accounts: PaginatedHolder[];
+  cursor: string;
+  hasMore: boolean;
+  limit: number;
+}
+
+interface PaginatedHolder {
+  wallet: string;
+  account: string;
+  amount: number;
+  value: {
+    quote: number;
+    usd: number;
+  };
+  percentage: number;
+}
+
+// Aggregated price update structure
+interface AggregatedPriceUpdate {
+  token: string;
+  timestamp: number;
+  price: number;
+  pool: string;
+  aggregated: {
+    median: number;
+    average: number;
+    min: number;
+    max: number;
+    poolCount: number;
+  };
+  topPools: Array<{
+    poolId: string;
+    price: number;
+    liquidity: number;
+    market: string;
+  }>;
+}
+
+// Developer holding update structure
 interface DevHoldingUpdate {
   token: string;
   creator: string;
@@ -1151,14 +1368,14 @@ interface DevHoldingUpdate {
   timestamp: number;
 }
 
-// NEW: Top holder information
+// Top holder information
 interface TopHolder {
   address: string;
   amount: string;
   percentage: number;
 }
 
-// NEW: Top 10 holders update structure
+// Top 10 holders update structure
 interface Top10HoldersUpdate {
   token: string;
   holders: TopHolder[];
@@ -1185,8 +1402,11 @@ dataStream.on('error', (error) => console.error('Error:', error));
 
 // Data events
 dataStream.on('latest', (data) => console.log('New token:', data));
+dataStream.on(`price:aggregated:${tokenAddress}`, (data) =>
+  console.log('Aggregated price update:', data)
+); // NEW - RECOMMENDED
 dataStream.on(`price-by-token:${tokenAddress}`, (data) =>
-  console.log('Price update:', data)
+  console.log('Price update (deprecated - auto-switches to new main pool):', data)
 );
 dataStream.on(`price:${tokenAddress}`, (data) =>
   console.log('Price update:', data)
@@ -1218,8 +1438,8 @@ dataStream.on(`token:${tokenAddress}`, (data) =>
   console.log('Token update (all pools):', data)
 );
 dataStream.on(`token:${tokenAddress}:primary`, (data) =>
-  console.log('Token update (primary pool):', data)
-); // NEW
+  console.log('Token update (primary pool - auto-switches to new main pool):', data)
+);
 dataStream.on(`pool:${poolId}`, (data) => console.log('Pool update:', data));
 dataStream.on(`sniper:${tokenAddress}`, (data) =>
   console.log('Sniper update:', data)
@@ -1229,10 +1449,10 @@ dataStream.on(`insider:${tokenAddress}`, (data) =>
 );
 dataStream.on(`stats:token:${tokenAddress}`, (data) =>
   console.log('Token stats:', data)
-); // NEW
+);
 dataStream.on(`stats:pool:${poolId}`, (data) =>
   console.log('Pool stats:', data)
-); // NEW
+);
 ```
 
 ### Connection Management

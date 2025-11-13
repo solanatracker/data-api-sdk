@@ -28,7 +28,8 @@ import {
   WalletTradesResponse,
   ProcessedEvent,
   SubscriptionResponse,
-  ChartDataParams
+  ChartDataParams,
+  PaginatedTokenHoldersResponse
 } from './interfaces';
 
 import { decodeBinaryEvents } from './event-processor';
@@ -61,6 +62,7 @@ export class ValidationError extends DataApiError {
     this.name = 'ValidationError';
   }
 }
+
 /**
  * Config options for the Solana Tracker Data API
  */
@@ -79,6 +81,81 @@ export interface RequestOptions {
   /** Disable logs for rate limit warnings */
   disableLogs?: boolean;
 }
+
+/**
+ * Parameters for token overview endpoint (/tokens/multi/all)
+ */
+export interface TokenOverviewParams {
+  /** Number of tokens per category (default: 100, max: 500) */
+  limit?: number;
+  /** Minimum curve percentage for graduating tokens (default: 40) */
+  minCurve?: number;
+  /** Minimum number of holders for graduating tokens (default: 20) */
+  minHolders?: number;
+  /** Maximum number of holders for graduating tokens */
+  maxHolders?: number;
+  /** Reduce spam by filtering out quick graduated tokens */
+  reduceSpam?: boolean;
+  
+  // Filters from buildWhereClause
+  minLiquidity?: number;
+  maxLiquidity?: number;
+  minMarketCap?: number;
+  maxMarketCap?: number;
+  markets?: string[];
+  minRiskScore?: number;
+  maxRiskScore?: number;
+  rugged?: boolean;
+}
+
+/**
+ * Parameters for graduated tokens endpoint (/tokens/multi/graduated)
+ */
+export interface GraduatedTokensParams {
+  /** Number of tokens to return (default: 100, max: 500) */
+  limit?: number;
+  /** Page number for pagination (default: 1) */
+  page?: number;
+  /** Reduce spam by filtering out quick graduated tokens */
+  reduceSpam?: boolean;
+  
+  // Filters from buildWhereClause
+  minLiquidity?: number;
+  maxLiquidity?: number;
+  minMarketCap?: number;
+  maxMarketCap?: number;
+  markets?: string[];
+  minRiskScore?: number;
+  maxRiskScore?: number;
+  rugged?: boolean;
+}
+
+/**
+ * Parameters for graduating tokens endpoint (/tokens/multi/graduating)
+ */
+export interface GraduatingTokensParams {
+  /** Number of tokens to return (default: 100, max: 500) */
+  limit?: number;
+  /** Minimum curve percentage (default: 40) */
+  minCurve?: number;
+  /** Maximum curve percentage (default: 100) */
+  maxCurve?: number;
+  /** Minimum number of holders (default: 20) */
+  minHolders?: number;
+  /** Maximum number of holders */
+  maxHolders?: number;
+  
+  // Filters from buildWhereClause
+  minLiquidity?: number;
+  maxLiquidity?: number;
+  minMarketCap?: number;
+  maxMarketCap?: number;
+  markets?: string[];
+  minRiskScore?: number;
+  maxRiskScore?: number;
+  rugged?: boolean;
+}
+
 /**
  * Solana Tracker Data API client
  */
@@ -205,6 +282,27 @@ export class Client {
     }
   }
 
+  /**
+   * Builds query string from parameters object
+   * @param params Parameters object
+   * @returns Query string
+   */
+  private buildQueryString(params: Record<string, any>): string {
+    const queryParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null) {
+        // Handle arrays - convert to comma-separated string
+        if (Array.isArray(value)) {
+          queryParams.append(key, value.join(','));
+        } else {
+          queryParams.append(key, value.toString());
+        }
+      }
+    }
+    const query = queryParams.toString();
+    return query ? `?${query}` : '';
+  }
+
   // ======== TOKEN ENDPOINTS ========
 
   /**
@@ -236,6 +334,36 @@ export class Client {
     this.validatePublicKey(tokenAddress, 'tokenAddress');
     return this.request<TokenHoldersResponse>(`/tokens/${tokenAddress}/holders`);
   }
+
+  /**
+   * Get token holders with pagination support
+   * @param tokenAddress The token's mint address
+   * @param limit Number of holders to return per page (default: 100, max: 100)
+   * @param cursor Pagination cursor from previous response
+   * @returns Paginated token holders information
+   */
+  async getTokenHoldersPaginated(
+    tokenAddress: string,
+    limit?: number,
+    cursor?: string
+  ): Promise<PaginatedTokenHoldersResponse> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+
+    const params = new URLSearchParams();
+    if (limit) {
+      if (limit > 5000) {
+        throw new ValidationError('Maximum limit is 5000');
+      }
+      params.append('limit', limit.toString());
+    }
+    if (cursor) params.append('cursor', cursor);
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<PaginatedTokenHoldersResponse>(
+      `/tokens/${tokenAddress}/holders/paginated${query}`
+    );
+  }
+
 
   /**
    * Get top 20 token holders
@@ -352,33 +480,87 @@ export class Client {
   }
 
   /**
- * Get an overview of latest, graduating, and graduated tokens
- * @param limit Optional limit for the number of tokens per category
- * @returns Token overview (Memescope / Pumpvision style)
- */
-  async getTokenOverview(limit?: number): Promise<TokenOverview> {
-    if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
+   * Get an overview of latest, graduating, and graduated tokens
+   * @param limit Number of tokens per category (or params object)
+   * @returns Token overview (Memescope / Pumpvision style)
+   */
+  async getTokenOverview(limit?: number): Promise<TokenOverview>;
+  async getTokenOverview(params?: TokenOverviewParams): Promise<TokenOverview>;
+  async getTokenOverview(limitOrParams?: number | TokenOverviewParams): Promise<TokenOverview> {
+    let params: TokenOverviewParams | undefined;
+    
+    if (typeof limitOrParams === 'number') {
+      params = { limit: limitOrParams };
+    } else {
+      params = limitOrParams;
+    }
+
+    if (params?.limit !== undefined && (!Number.isInteger(params.limit) || params.limit <= 0)) {
       throw new ValidationError('Limit must be a positive integer');
     }
 
-    const endpoint = limit ? `/tokens/multi/all?limit=${limit}` : '/tokens/multi/all';
-    return this.request<TokenOverview>(endpoint);
+    if (params?.limit !== undefined && params.limit > 500) {
+      throw new ValidationError('Maximum limit is 500');
+    }
+
+    const query = params ? this.buildQueryString(params) : '';
+    return this.request<TokenOverview>(`/tokens/multi/all${query}`);
   }
 
   /**
    * Get graduated tokens
+   * @param params Optional parameters including limit, page, and filters
    * @returns List of graduated tokens
    */
-  async getGraduatedTokens(): Promise<TokenDetailResponse[]> {
-    return this.request<TokenDetailResponse[]>('/tokens/multi/graduated');
+  async getGraduatedTokens(): Promise<TokenDetailResponse[]>;
+  async getGraduatedTokens(params?: GraduatedTokensParams): Promise<TokenDetailResponse[]>;
+  async getGraduatedTokens(params?: GraduatedTokensParams): Promise<TokenDetailResponse[]> {
+    if (params?.limit !== undefined && (!Number.isInteger(params.limit) || params.limit <= 0)) {
+      throw new ValidationError('Limit must be a positive integer');
+    }
+
+    if (params?.limit !== undefined && params.limit > 500) {
+      throw new ValidationError('Maximum limit is 500');
+    }
+
+    if (params?.page !== undefined && (!Number.isInteger(params.page) || params.page < 1)) {
+      throw new ValidationError('Page must be a positive integer');
+    }
+
+    const query = params ? this.buildQueryString(params) : '';
+    return this.request<TokenDetailResponse[]>(`/tokens/multi/graduated${query}`);
   }
 
   /**
-  * Get graduated tokens
-  * @returns List of graduated tokens
-  */
-  async getGraduatingTokens(): Promise<TokenDetailResponse[]> {
-    return this.request<TokenDetailResponse[]>('/tokens/multi/graduating');
+   * Get graduating tokens
+   * @param params Optional parameters including limit, curve percentages, holders, and filters
+   * @returns List of graduating tokens
+   */
+  async getGraduatingTokens(): Promise<TokenDetailResponse[]>;
+  async getGraduatingTokens(params?: GraduatingTokensParams): Promise<TokenDetailResponse[]>;
+  async getGraduatingTokens(params?: GraduatingTokensParams): Promise<TokenDetailResponse[]> {
+    if (params?.limit !== undefined && (!Number.isInteger(params.limit) || params.limit <= 0)) {
+      throw new ValidationError('Limit must be a positive integer');
+    }
+
+    if (params?.limit !== undefined && params.limit > 500) {
+      throw new ValidationError('Maximum limit is 500');
+    }
+
+    if (params?.minCurve !== undefined && (params.minCurve < 0 || params.minCurve > 100)) {
+      throw new ValidationError('minCurve must be between 0 and 100');
+    }
+
+    if (params?.maxCurve !== undefined && (params.maxCurve < 0 || params.maxCurve > 100)) {
+      throw new ValidationError('maxCurve must be between 0 and 100');
+    }
+
+    if (params?.minCurve !== undefined && params?.maxCurve !== undefined && params.minCurve > params.maxCurve) {
+      throw new ValidationError('minCurve must be less than or equal to maxCurve');
+    }
+
+    const query = params ? this.buildQueryString(params) : '';
+    return this.request<TokenDetailResponse[]>(`/tokens/multi/graduating${query}`);
   }
 
   // ======== PRICE ENDPOINTS ========
