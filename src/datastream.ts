@@ -744,12 +744,6 @@ export class Datastream extends EventEmitter {
       this.transactions.add(message.tx);
     }
 
-    // Special handling for price events
-    if (room.includes('price:') && !room.includes('price:aggregated')) {
-      this.emit(`price-by-token:${message.token}`, message);
-    }
-
-
     this.emit(room, message);
   }
 
@@ -832,19 +826,6 @@ export class Datastream extends EventEmitter {
           const message = JSON.parse(event.data);
           if (message.type === 'message') {
             // Handle primary pool routing
-            if (message.room && message.room.indexOf('pool:') === 0 && message.data && message.data.tokenAddress) {
-              const primaryRoom = 'token:' + message.data.tokenAddress + ':primary';
-              const roomsArray = Array.from(subscribedRooms);
-              if (roomsArray.indexOf(primaryRoom) !== -1) {
-                self.postMessage({
-                  type: 'message',
-                  data: {
-                    room: primaryRoom,
-                    message: message.data
-                  }
-                });
-              }
-            }
             
             // Send the original message
             self.postMessage({
