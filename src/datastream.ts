@@ -1206,12 +1206,35 @@ export interface TokenTransaction {
   amount: number;
   priceUsd: number;
   volume: number;
-  volumeSol?: number;
+  solVolume: number;
   type: 'buy' | 'sell';
   wallet: string;
   time: number;
   program: string;
-  pools?: string[];
+  token: {
+    from: {
+      name: string;
+      symbol: string;
+      image?: string;
+      decimals: number;
+      amount: number;
+      address: string;
+      price?: { usd: number };
+      marketCap?: { usd: number };
+      [key: string]: any;
+    };
+    to: {
+      name: string;
+      symbol: string;
+      image?: string;
+      decimals: number;
+      amount: number;
+      address: string;
+      price?: { usd: number };
+      marketCap?: { usd: number };
+      [key: string]: any;
+    };
+  };
 }
 
 export interface PriceUpdate {
@@ -1316,22 +1339,42 @@ export interface WalletTransaction {
   price: {
     quote: number;
     usd: number;
-  }
+  };
   volume: {
     usd: number;
     sol: number;
-  }
+  };
   program: string;
   pools: string[];
   from: {
     address: string;
     amount: number;
-    token: TokenInfo & { amount: number, price?: { usd: number; quote: number } };
+    token: {
+      name: string;
+      symbol: string;
+      image?: string;
+      decimals: number;
+      amount: number;
+      address: string;
+      price?: { usd: number };
+      marketCap?: { usd: number };
+      [key: string]: any;
+    };
   };
   to: {
     address: string;
     amount: number;
-    token: TokenInfo & { amount: number, price?: { usd: number; quote: number } };
+    token: {
+      name: string;
+      symbol: string;
+      image?: string;
+      decimals: number;
+      amount: number;
+      address: string;
+      price?: { usd: number };
+      marketCap?: { usd: number };
+      [key: string]: any;
+    };
   };
 }
 

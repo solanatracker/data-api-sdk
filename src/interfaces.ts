@@ -692,23 +692,32 @@ export interface CreditsResponse {
   credits: number;
 }
 
+export interface TradeMetadataToken {
+  name: string;
+  symbol: string;
+  image?: string;
+  decimals: number;
+  amount: number;
+  address: string;
+  priceUsd: number;
+  // Additional fields that may be present from on-chain metadata
+  mint?: string;
+  uri?: string;
+  isMutable?: boolean;
+  description?: string;
+  tags?: string[];
+  extensions?: {
+    website?: string;
+    twitter?: string;
+    telegram?: string;
+  };
+  hasFileMetaData?: boolean;
+  [key: string]: any; // Allow any additional on-chain metadata fields
+}
+
 export interface TradeMetadata {
-  from: {
-    name: string;
-    symbol: string;
-    image: string;
-    decimals: number;
-    amount: number;
-    address: string;
-  };
-  to: {
-    name: string;
-    symbol: string;
-    image: string;
-    decimals: number;
-    amount: number;
-    address: string;
-  };
+  from: TradeMetadataToken;
+  to: TradeMetadataToken;
 }
 
 // Trade structure for /trades endpoint
@@ -737,6 +746,7 @@ export interface WalletTrade {
       symbol: string;
       image: string;
       decimals: number;
+      price?: { usd: number };
     };
     priceUsd: number;
   };
@@ -748,6 +758,7 @@ export interface WalletTrade {
       symbol: string;
       image: string;
       decimals: number;
+      price?: { usd: number };
     };
     priceUsd: number;
   };
