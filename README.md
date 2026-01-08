@@ -13,10 +13,11 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 - Compatible with both Node.js and browser environments
 - Enhanced search with 60+ filter parameters including holder distribution, social media, fees, and more
 - Cursor-based pagination for efficient deep searches
-- **NEW**: Token filtering for overview endpoints (Memescope / Pulse overview) (graduated, graduating, latest)
-- **NEW**: Paginated token holders endpoint for efficient holder data retrieval (5000 per page limit)
-- **NEW**: Aggregated price updates across all pools for a token via WebSocket (min, median, max, average, top pools setc.)
-- **NEW**: Smart primary pool routing - automatically switches to new main pool (price-by-token, token:{token}:primary rooms)
+- **NEW**: Top performers endpoint - get the best performing tokens launched today
+- Token filtering for overview endpoints (Memescope / Pulse overview) (graduated, graduating, latest)
+- *Paginated token holders endpoint for efficient holder data retrieval (5000 per page limit)
+- Aggregated price updates across all pools for a token via WebSocket (min, median, max, average, top pools setc.)
+- Smart primary pool routing - automatically switches to new main pool (price-by-token, token:{token}:primary rooms)
 - (Global Fees) Platform and network fees tracking via WebSocket and API
 - Developer/creator holdings tracking via WebSocket
 - Top 10 holders monitoring with real-time percentage updates
@@ -72,7 +73,14 @@ fetchTokenInfo();
 
 #### Latest Features:
 
-1. **Enhanced Token Overview with Advanced Filtering**: 
+1. **Top Performers Endpoint**: Get the best performing tokens launched today:
+   ```typescript
+   const topPerformers = await client.getTopPerformers('1h');
+   // Valid timeframes: '5m', '15m', '30m', '1h', '6h', '12h', '24h'
+   console.log('Top performers:', topPerformers.map(t => t.token.symbol));
+   ```
+
+2. **Enhanced Token Overview with Advanced Filtering**: 
    - Filter latest, graduating, and graduated tokens by liquidity, market cap, risk score, and specific markets
    - Support for spam reduction and holder count filtering
    - Backward compatible with simple limit parameter
@@ -606,6 +614,10 @@ const multipleTokens = await client.getMultipleTokens([
 
 // Get trending tokens
 const trendingTokens = await client.getTrendingTokens('1h');
+
+// Get top performing tokens by price change percentage
+const topPerformers = await client.getTopPerformers('1h');
+// Valid timeframes: '5m', '15m', '30m', '1h', '6h', '12h', '24h'
 
 // Get tokens by volume
 const volumeTokens = await client.getTokensByVolume('24h');

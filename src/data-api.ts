@@ -466,6 +466,19 @@ export class Client {
   }
 
   /**
+   * Get top performing tokens by price change percentage
+   * @param timeframe Timeframe for performance calculation (5m, 15m, 30m, 1h, 6h, 12h, 24h)
+   * @returns List of top performing tokens
+   */
+  async getTopPerformers(timeframe: string): Promise<TokenDetailResponse[]> {
+    const validTimeframes = ['5m', '15m', '30m', '1h', '6h', '12h', '24h'];
+    if (!validTimeframes.includes(timeframe)) {
+      throw new ValidationError(`Invalid timeframe. Must be one of: ${validTimeframes.join(', ')}`);
+    }
+    return this.request<TokenDetailResponse[]>(`/top-performers/${timeframe}`);
+  }
+
+  /**
    * Get tokens sorted by volume
    * @param timeframe Optional timeframe for volume calculation
    * @returns List of tokens sorted by volume

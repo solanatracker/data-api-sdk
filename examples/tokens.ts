@@ -1,50 +1,29 @@
-/**
- * Token-related examples for the Solana Tracker API
- */
 import { Client } from '@solana-tracker/data-api'
 import { handleError } from './utils';
 
-// Initialize the API client with your API key
 const client = new Client({
-  apiKey: 'YOUR_API_KEY'
+  apiKey: process.env.SOLANA_TRACKER_API_KEY || 'YOUR_API_KEY'
 });
 
-/**
- * Example 1: Get token info
- */
+// Get info for a single token
 export async function getTokenInfo() {
   try {
-    // SOL token address
     const solAddress = 'So11111111111111111111111111111111111111112';
     const tokenInfo = await client.getTokenInfo(solAddress);
     
-    console.log('\n=== Token Info ===');
-    console.log(`Name: ${tokenInfo.token.name} (${tokenInfo.token.symbol})`);
-    console.log(`Decimals: ${tokenInfo.token.decimals}`);
+    console.log('\nToken: ', tokenInfo.token.name, `(${tokenInfo.token.symbol})`);
     
     if (tokenInfo.pools.length > 0) {
-      console.log(`\nPool Information:`);
-      console.log(`Price (USD): $${tokenInfo.pools[0].price.usd.toFixed(6)}`);
-      console.log(`Market Cap (USD): $${(tokenInfo.pools[0].marketCap.usd / 1000000).toFixed(2)}M`);
-      console.log(`Liquidity (USD): $${(tokenInfo.pools[0].liquidity.usd / 1000000).toFixed(2)}M`);
-    }
-    
-    console.log(`\nHolders: ${tokenInfo.holders || 'Not available'}`);
-    
-    if (tokenInfo.risk) {
-      console.log(`\nRisk Score: ${tokenInfo.risk.score}/10`);
-      if (tokenInfo.risk.risks.length > 0) {
-        console.log('Risk Factors:');
-        tokenInfo.risk.risks.forEach(risk => {
-          console.log(`- ${risk.name}: ${risk.description} (Level: ${risk.level})`);
-        });
-      }
+      const pool = tokenInfo.pools[0];
+      console.log('Price:', `$${pool.price.usd.toFixed(6)}`);
+      console.log('Market Cap:', `$${(pool.marketCap.usd / 1000000).toFixed(2)}M`);
+      console.log('Liquidity:', `$${(pool.liquidity.usd / 1000000).toFixed(2)}M`);
+      console.log('Holders:', tokenInfo.holders);
     }
     
     return tokenInfo;
   } catch (error) {
     handleError(error);
-    return null;
   }
 }
 
@@ -70,139 +49,170 @@ export async function getTrendingTokens() {
       }
       
       if (token.events['24h']) {
-        console.log(`   24h Change: ${token.events['24h'].priceChangePercentage.toFixed(2)}%`);
-      }
-    }
+// Find trending tokens
+export async function getTrendingTokens() {
+  try {
+    const trending = await client.getTrendingTokens('1h');
     
-    return trendingTokens;
+    console.log('\n📈 Top Trending (1h):');
+    trending.slice(0, 5).forEach((token, i) => {
+      const pool = token.pools[0];
+      const change = token.events['1h']?.priceChangePercentage || 0;
+      console.log(`${i + 1}. ${token.token.symbol} - $${pool.price.usd.toFixed(6)} (${change.toFixed(1)}%)`);
+    });
+    
+    return trending;
   } catch (error) {
     handleError(error);
-    return null;
   }
 }
 
-/**
- * Example 3: Search for tokens
- */
+// Find best performers
+export async function getTopPerformers() {
+  try {
+    const performers = await client.getTopPerformers('1h');
+    
+    console.log('\n🚀 Top Performers (1h):');
+    performers.slice(0, 5).forEach((token, i) => {
+      const pool = token.pools[0];
+      const change = token.events['1h']?.priceChangePercentage || 0;
+      console.log(`${i + 1}. ${token.token.symbol} - ${change.toFixed(1)}% gain at $${pool.price.usd.toFixed(6)}`);
+    });
+    
+    return performers;
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+// Search for tokens by criteria
 export async function searchTokens(query: string) {
   try {
     const results = await client.searchTokens({
       query,
-      minLiquidity: 10000,  // Minimum $10k liquidity
+      minLiquidity: 10000,
       sortBy: 'marketCapUsd',
       sortOrder: 'desc',
-      limit: 5
+      limit: 10
     });
     
-    console.log(`\n=== Search Results for "${query}" ===`);
-    
-    results.data.forEach((token, index) => {
-      console.log(`\n${index+1}. ${token.name} (${token.symbol})`);
-      console.log(`   Address: ${token.mint}`);
-      console.log(`   Price: $${token.priceUsd.toFixed(6)}`);
-      console.log(`   Market Cap: $${(token.marketCapUsd / 1000000).toFixed(2)}M`);
-      console.log(`   Liquidity: $${(token.liquidityUsd / 1000).toFixed(2)}k`);
-      console.log(`   Transactions: ${token.totalTransactions} (${token.buy} buys, ${token.sells} sells)`);
+    console.log(`\n🔍 Search results for "${query}":`);
+    results.data.forEach((token, i) => {
+      console.log(`${i + 1}. ${token.name} (${token.symbol})`);
+      console.log(`   Market Cap: $${(token.marketCapUsd / 1000000).toFixed(2)}M - Liquidity: $${(token.liquidityUsd / 1000).toFixed(2)}k`);
     });
     
     return results;
   } catch (error) {
     handleError(error);
-    return null;
   }
 }
 
-/**
- * Example 4: Get token holders
- */
+// Check token holders
 export async function getTokenHolders(tokenAddress: string) {
   try {
     const holders = await client.getTokenHolders(tokenAddress);
     
-    console.log(`\n=== Holder Information for ${tokenAddress} ===`);
-    console.log(`Total Holders: ${holders.total}`);
+    console.log(`\n👥 Holder info for ${tokenAddress}:`);
+    console.log(`Total holders: ${holders.total}`);
+    console.log('\nTop 5:');
     
-    console.log(`\nTop 5 Holders:`);
-    for (let i = 0; i < Math.min(5, holders.accounts.length); i++) {
-      const holder = holders.accounts[i];
-      console.log(`${i+1}. Wallet: ${holder.wallet}`);
-      console.log(`   Amount: ${holder.amount.toLocaleString()}`);
-      console.log(`   Value: $${holder.value.usd.toLocaleString()}`);
-      console.log(`   Percentage: ${holder.percentage.toFixed(2)}%`);
-    }
+    holders.accounts.slice(0, 5).forEach((holder, i) => {
+      console.log(`${i + 1}. ${holder.wallet.slice(0, 8)}... - ${holder.percentage.toFixed(2)}% (${holder.amount.toLocaleString()} tokens)`);
+    });
     
     return holders;
   } catch (error) {
     handleError(error);
-    return null;
   }
 }
 
-/**
- * Example 5: Get multiple tokens at once
- */
+// Get multiple tokens at once
 export async function getMultipleTokens() {
   try {
-    // Example token addresses
-    const tokenAddresses = [
+    const addresses = [
       'So11111111111111111111111111111111111111112', // SOL
       '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', // RAY
-      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'  // USDC
+      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' // USDC
     ];
     
-    const tokens = await client.getMultipleTokens(tokenAddresses);
+    const tokens = await client.getMultipleTokens(addresses);
     
-    console.log('\n=== Multiple Tokens Information ===');
-    
-    tokenAddresses.forEach((address, index) => {
-      const token = tokens.tokens[address];
-      console.log(`\n${index+1}. ${token.token.name} (${token.token.symbol})`);
-      
-      if (token.pools.length > 0) {
-        const pool = token.pools[0];
-        console.log(`   Price: $${pool.price.usd.toFixed(6)}`);
-        console.log(`   Market Cap: $${(pool.marketCap.usd / 1000000).toFixed(2)}M`);
-      }
-      
-      console.log(`   Holders: ${token.holders || 'Not available'}`);
+    console.log('\n📊 Token batch:');
+    Object.entries(tokens.tokens).forEach(([address, token]) => {
+      const pool = token.pools[0];
+      console.log(`${token.token.symbol}: $${pool.price.usd.toFixed(6)} - ${token.holders} holders`);
     });
     
     return tokens;
   } catch (error) {
     handleError(error);
-    return null;
   }
 }
 
-/**
- * Example 6: Get a Pumpvision / Memescope style token overview
- */
+// View token overview / memescope style
 export async function getTokenOverview() {
   try {
-
-    const tokens = await client.getTokenOverview(100);
+    const overview = await client.getTokenOverview({
+      limit: 50,
+      minLiquidity: 50000,
+      reduceSpam: true
+    });
     
-    console.log('\n=== Token Overview ===');
-    console.log(tokens);
+    console.log('\n📋 Token Overview:');
+    console.log(`Latest tokens: ${overview.latest.length}`);
+    console.log(`Graduating: ${overview.graduating.length}`);
+    console.log(`Graduated: ${overview.graduated.length}`);
     
-    return tokens;
+    return overview;
   } catch (error) {
     handleError(error);
-    return null;
   }
 }
 
-export async function getTokensByDeployer(deployer: string, page: number = 1, limit: number = 100) {
+// Get tokens by a specific creator/deployer
+export async function getTokensByDeployer(deployer: string) {
   try {
-    const tokens = await client.getTokensByDeployer(deployer, page, limit);
+    const tokens = await client.getTokensByDeployer(deployer);
     
-    console.log(`\n=== Tokens by Deployer (${deployer}) - Page ${page} ===`);
-   
-    console.log(tokens);
+    console.log(`\n🔧 Tokens by ${deployer.slice(0, 8)}...:`);
+    console.log(`Found ${tokens.length} tokens`);
+    
+    tokens.slice(0, 5).forEach((token, i) => {
+      const pool = token.pools[0];
+      console.log(`${i + 1}. ${token.token.symbol} - $${pool.price.usd.toFixed(6)}`);
+    });
     
     return tokens;
   } catch (error) {
     handleError(error);
-    return null;
+  }
+}
+
+// Pagination example for token holders
+export async function getPaginatedHolders(tokenAddress: string) {
+  try {
+    let cursor: string | undefined;
+    let page = 1;
+    
+    console.log(`\n📄 Paginated holders for ${tokenAddress.slice(0, 8)}...:`);
+    
+    do {
+      const result = await client.getTokenHoldersPaginated(tokenAddress, 100, cursor);
+      
+      console.log(`\nPage ${page} (${result.accounts.length} holders):`);
+      result.accounts.forEach((holder, i) => {
+        console.log(`${i + 1}. ${holder.percentage.toFixed(2)}% - $${holder.value.usd.toFixed(2)}`);
+      });
+      
+      cursor = result.cursor;
+      page++;
+      
+      if (!result.hasMore) break;
+    } while (cursor);
+    
+    return true;
+  } catch (error) {
+    handleError(error);
   }
 }

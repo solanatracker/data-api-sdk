@@ -1,215 +1,107 @@
-/**
- * Wallet-related examples for the Solana Tracker API
- */
 import { Client } from '@solana-tracker/data-api'
 import { handleError } from './utils';
 
-
-// Initialize the API client with your API key
 const client = new Client({
-  apiKey: 'YOUR_API_KEY'
+  apiKey: process.env.SOLANA_TRACKER_API_KEY || 'YOUR_API_KEY'
 });
 
-// Replace with a real wallet address for testing
 const EXAMPLE_WALLET = 'FbMxP3GVq8TQ36nbYgx4NP9iygMpwAwFWJwW81ioCiSF';
 
-/**
- * Example 1: Get basic wallet information
- */
+// Quick overview of a wallet
 export async function getWalletBasicInfo(walletAddress: string = EXAMPLE_WALLET) {
   try {
-    const walletInfo = await client.getWalletBasic(walletAddress);
+    const wallet = await client.getWalletBasic(walletAddress);
     
-    console.log('\n=== Basic Wallet Information ===');
-    console.log(`Wallet Address: ${walletAddress}`);
-    console.log(`Total Value: $${walletInfo.total.toFixed(2)}`);
-    console.log(`Total SOL Value: ${walletInfo.totalSol.toFixed(4)} SOL`);
-    console.log(`Total Tokens: ${walletInfo.tokens.length}`);
+    console.log('\n💼 Wallet Overview:');
+    console.log('Total Value:', `$${wallet.total.toFixed(2)}`);
+    console.log('Holdings:', wallet.tokens.length, 'tokens');
     
-    console.log('\nTop 5 Holdings:');
-    const sortedTokens = [...walletInfo.tokens].sort((a, b) => b.value - a.value);
+    const sorted = [...wallet.tokens].sort((a, b) => b.value - a.value);
+    console.log('\nTop 3:');
+    sorted.slice(0, 3).forEach((token, i) => {
+      console.log(`${i + 1}. $${token.value.toFixed(2)} - ${token.address.slice(0, 8)}...`);
+    });
     
-    for (let i = 0; i < Math.min(5, sortedTokens.length); i++) {
-      const token = sortedTokens[i];
-      console.log(`\n${i+1}. ${token.address}`);
-      console.log(`   Balance: ${token.balance.toFixed(6)}`);
-      console.log(`   Value: $${token.value.toFixed(2)}`);
-      console.log(`   Price: $${token.price.usd.toFixed(6)}`);
-    }
-    
-    return walletInfo;
+    return wallet;
   } catch (error) {
     handleError(error);
-    return null;
   }
 }
 
-/**
- * Example 2: Get detailed wallet information
- */
+// Detailed portfolio view
 export async function getWalletDetailedInfo(walletAddress: string = EXAMPLE_WALLET) {
   try {
-    const walletInfo = await client.getWallet(walletAddress);
+    const wallet = await client.getWallet(walletAddress);
     
-    console.log('\n=== Detailed Wallet Information ===');
-    console.log(`Wallet Address: ${walletAddress}`);
-    console.log(`Total Value: $${walletInfo.total.toFixed(2)}`);
-    console.log(`Total SOL Value: ${walletInfo.totalSol.toFixed(4)} SOL`);
-    console.log(`Timestamp: ${walletInfo.timestamp}`);
-    console.log(`Total Tokens: ${walletInfo.tokens.length}`);
+    console.log('\n📊 Portfolio Details:');
+    console.log('Total:', `$${wallet.total.toFixed(2)}`);
+    console.log('SOL:', `${wallet.totalSol.toFixed(4)}`);
     
-    console.log('\nTop 5 Holdings (with details):');
-    const sortedTokens = [...walletInfo.tokens].sort((a, b) => b.value - a.value);
+    const sorted = [...wallet.tokens].sort((a, b) => b.value - a.value);
+    console.log('\nAll Holdings:');
+    sorted.slice(0, 10).forEach((token, i) => {
+      const symbol = token.token.symbol || 'Unknown';
+      console.log(`${i + 1}. ${symbol} - $${token.value.toFixed(2)} (${token.balance.toFixed(2)} tokens)`);
+    });
     
-    for (let i = 0; i < Math.min(5, sortedTokens.length); i++) {
-      const token = sortedTokens[i];
-      console.log(`\n${i+1}. ${token.token.name} (${token.token.symbol})`);
-      console.log(`   Balance: ${token.balance.toFixed(6)}`);
-      console.log(`   Value: $${token.value.toFixed(2)}`);
-      
-      if (token.pools && token.pools.length > 0) {
-        const pool = token.pools[0];
-        console.log(`   Price: $${pool.price.usd.toFixed(6)}`);
-        console.log(`   Market Cap: $${(pool.marketCap.usd / 1000000).toFixed(2)}M`);
-      }
-      
-      if (token.risk) {
-        console.log(`   Risk Score: ${token.risk.score}/10`);
-      }
-    }
-    
-    return walletInfo;
+    return wallet;
   } catch (error) {
     handleError(error);
-    return null;
   }
 }
 
-/**
- * Example 3: Get wallet information with pagination
- */
+// Paginated wallet view
 export async function getWalletWithPagination(walletAddress: string = EXAMPLE_WALLET, page: number = 1) {
   try {
-    const walletInfo = await client.getWalletPage(walletAddress, page);
+    const wallet = await client.getWalletPage(walletAddress, page);
     
-    console.log(`\n=== Wallet Information (Page ${page}) ===`);
-    console.log(`Wallet Address: ${walletAddress}`);
-    console.log(`Total Value: $${walletInfo.total.toFixed(2)}`);
-    console.log(`Total SOL Value: ${walletInfo.totalSol.toFixed(4)} SOL`);
-    console.log(`Tokens on Page ${page}: ${walletInfo.tokens.length}`);
+    console.log(`\n📄 Portfolio (page ${page}):`);
+    console.log(`${wallet.tokens.length} tokens shown`);
     
-    console.log('\nTokens on This Page:');
-    
-    walletInfo.tokens.forEach((token, index) => {
-      console.log(`\n${index+1}. ${token.token.name || token.token.mint} (${token.token.symbol || 'Unknown Symbol'})`);
-      console.log(`   Balance: ${token.balance.toFixed(6)}`);
-      console.log(`   Value: $${token.value.toFixed(2)}`);
+    wallet.tokens.forEach((token, i) => {
+      const symbol = token.token.symbol || token.token.mint;
+      console.log(`${i + 1}. ${symbol}: $${token.value.toFixed(2)}`);
     });
     
-    return walletInfo;
+    return wallet;
   } catch (error) {
     handleError(error);
-    return null;
   }
 }
 
-/**
- * Example 4: Get wallet trade history
- */
+// Trading activity
 export async function getWalletTrades(walletAddress: string = EXAMPLE_WALLET) {
   try {
-    // Get with metadata and Jupiter parsing
     const trades = await client.getWalletTrades(walletAddress, undefined, true, true);
     
-    console.log('\n=== Wallet Trade History ===');
-    console.log(`Wallet Address: ${walletAddress}`);
-    console.log(`Trades Found: ${trades.trades.length}`);
+    console.log(`\n📈 Recent Trades (${trades.trades.length} found):`);
     
-    console.log('\nRecent Trades:');
-    trades.trades.slice(0, 5).forEach((trade, index) => {
-      console.log(`\n${index+1}. Transaction: ${trade.tx.slice(0, 8)}...`);
-      console.log(`   Time: ${new Date(trade.time).toLocaleString()}`);
-      
-      if (trade.token) {
-        // If trade has detailed token info
-        console.log(`   From: ${trade.token.from.amount} ${trade.token.from.token?.symbol || trade.token.from.address.slice(0, 6)+'...'}`);
-        console.log(`   To: ${trade.token.to.amount} ${trade.token.to.token?.symbol || trade.token.to.address.slice(0, 6)+'...'}`);
-      } else if (trade.type) {
-        // If trade has type info
-        console.log(`   Type: ${trade.type.toUpperCase()}`);
-        console.log(`   Amount: ${trade.amount}`);
-        console.log(`   Price: $${trade.priceUsd?.toFixed(6) || 'N/A'}`);
-      }
-      
-      if (trade.volume) {
-        console.log(`   Volume: $${trade.volume.toFixed(2)}`);
-      } else if (trade.solVolume) {
-        console.log(`   Volume: ${trade.solVolume.toFixed(4)} SOL`);
-      }
-      
-      console.log(`   Program: ${trade.program}`);
+    trades.trades.slice(0, 10).forEach((trade, i) => {
+      const date = new Date(trade.time).toLocaleTimeString();
+      const type = trade.type ? trade.type.toUpperCase() : 'SWAP';
+      console.log(`${i + 1}. [${date}] ${type} - Tx: ${trade.tx.slice(0, 8)}...`);
     });
-    
-    if (trades.hasNextPage) {
-      console.log(`\nMore trades available. Next cursor: ${trades.nextCursor}`);
-    }
     
     return trades;
   } catch (error) {
     handleError(error);
-    return null;
   }
 }
 
-/**
- * Example 5: Get wallet trades with pagination using cursor
- */
-export async function getWalletTradesWithCursor(walletAddress: string = EXAMPLE_WALLET, cursor?: number) {
-  try {
-    const trades = await client.getWalletTrades(walletAddress, cursor, true, true);
-    
-    console.log(`\n=== Wallet Trade History ${cursor ? '(With Cursor)' : ''} ===`);
-    console.log(`Wallet Address: ${walletAddress}`);
-    console.log(`Trades Found: ${trades.trades.length}`);
-    
-    console.log('\nTrades:');
-    trades.trades.slice(0, 5).forEach((trade, index) => {
-      console.log(`\n${index+1}. Transaction: ${trade.tx.slice(0, 8)}...`);
-      console.log(`   Time: ${new Date(trade.time).toLocaleString()}`);
-      
-      if (trade.token) {
-        console.log(`   From: ${trade.token.from.amount} ${trade.token.from.token?.symbol || trade.token.from.address.slice(0, 6)+'...'}`);
-        console.log(`   To: ${trade.token.to.amount} ${trade.token.to.token?.symbol || trade.token.to.address.slice(0, 6)+'...'}`);
-      }
-    });
-    
-    if (trades.hasNextPage) {
-      console.log(`\nMore trades available. Next cursor: ${trades.nextCursor}`);
-      console.log(`To get the next page, call this function with cursor: ${trades.nextCursor}`);
-    } else {
-      console.log(`\nNo more trades available.`);
-    }
-    
-    return trades;
-  } catch (error) {
-    handleError(error);
-    return null;
-  }
-}
-
-/**
- * Example 6: Get wallet chart (PnL of total value over time)
- */
+// Get wallet PnL chart
 export async function getWalletChart(walletAddress: string = EXAMPLE_WALLET) {
   try {
     const chart = await client.getWalletChart(walletAddress);
-  
-    console.log('\n=== Wallet Chart (PnL Over Time) ===');
-    console.log(chart);
+    
+    console.log('\n📉 Portfolio Performance:');
+    if (chart.pnl) {
+      console.log('24h:', chart.pnl['24h'] ? `${chart.pnl['24h'].toFixed(2)}%` : 'N/A');
+      console.log('7d:', chart.pnl['7d'] ? `${chart.pnl['7d'].toFixed(2)}%` : 'N/A');
+      console.log('30d:', chart.pnl['30d'] ? `${chart.pnl['30d'].toFixed(2)}%` : 'N/A');
+    }
     
     return chart;
   } catch (error) {
     handleError(error);
-    return null;
   }
 }
