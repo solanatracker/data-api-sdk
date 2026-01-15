@@ -2,3 +2,5 @@ node_modules
 dist
 *.log
 *.tgz
+package-lock.json
+package-lock.json

@@ -35,6 +35,8 @@ export enum DatastreamRoom {
   // Snipers and insiders
   SNIPERS = 'sniper',
   INSIDERS = 'insider',
+  // Bundlers
+  BUNDLERS = 'bundlers',
 }
 
 /**
@@ -322,6 +324,14 @@ class SubscriptionMethods {
    */
   insiders(tokenAddress: string): SubscribeResponse<SniperInsiderUpdate> {
     return this.ds._subscribe<SniperInsiderUpdate>(`insider:${tokenAddress}`);
+  }
+
+  /**
+   * Subscribe to bundler updates for a token
+   * @param tokenAddress The token address
+   */
+  bundlers(tokenAddress: string): SubscribeResponse<BundlerUpdate> {
+    return this.ds._subscribe<BundlerUpdate>(`bundlers:${tokenAddress}`);
   }
 
   /**
@@ -1504,4 +1514,28 @@ export interface AggregatedPriceUpdate {
     liquidity: number;
     market: string;
   }>;
+}
+
+/**
+ * Real-time bundler wallet update data
+ */
+export interface BundlerUpdate {
+  /** Bundler wallet address */
+  wallet: string;
+  /** Raw token amount as string */
+  amount: string;
+  /** Current token amount held */
+  tokenAmount: number;
+  /** Previous token amount held */
+  previousAmount: number;
+  /** Amount bought by this bundler */
+  boughtAmount: number;
+  /** Percentage of supply bought by this bundler */
+  boughtPercentage: number;
+  /** Current percentage of total supply */
+  percentage: number;
+  /** Previous percentage of total supply */
+  previousPercentage: number;
+  /** Total percentage held by all bundlers for this token */
+  totalBundlerPercentage: number;
 }

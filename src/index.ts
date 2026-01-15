@@ -12,7 +12,8 @@ export {
   type PoolUpdate,
   type HolderUpdate,
   type WalletTransaction,
-  type TokenMetadata
+  type TokenMetadata,
+  type BundlerUpdate
 } from './datastream';
 
 // Export all interfaces

@@ -4,6 +4,7 @@ import {
   TokenHoldersResponse,
   TopHolder,
   AthPrice,
+  BundlersResponse,
   DeployerTokensResponse,
   SearchParams,
   SearchResponse,
@@ -383,6 +384,16 @@ export class Client {
   async getAthPrice(tokenAddress: string): Promise<AthPrice> {
     this.validatePublicKey(tokenAddress, 'tokenAddress');
     return this.request<AthPrice>(`/tokens/${tokenAddress}/ath`);
+  }
+
+  /**
+   * Get bundler information for a token
+   * @param tokenAddress The token's mint address
+   * @returns Bundler wallet stats including top 500 bundler wallets
+   */
+  async getTokenBundlers(tokenAddress: string): Promise<BundlersResponse> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+    return this.request<BundlersResponse>(`/tokens/${tokenAddress}/bundlers`);
   }
 
 

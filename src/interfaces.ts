@@ -26,7 +26,7 @@ export interface TokenInfo {
     created_tx: string;
     created_time: number;
   };
-  [key: string]: any; // Allow any additional properties
+  [key: string]: any;
 }
 
 export interface TokenSecurity {
@@ -87,6 +87,33 @@ export interface RiskCategory {
   totalBalance: number;
   totalPercentage: number;
   wallets: RiskWallet[];
+}
+
+export interface BundlerWallet {
+  wallet: string;
+  initialBalance: number;
+  initialPercentage: number;
+  balance: number;
+  percentage: number;
+  bundleTime: number;
+}
+
+export interface BundlersCategory {
+  count: number;
+  totalBalance: number;
+  totalPercentage: number;
+  totalInitialBalance: number;
+  totalInitialPercentage: number;
+  wallets: BundlerWallet[];
+}
+
+export interface BundlersResponse {
+  total: number;
+  balance: number;
+  percentage: number;
+  initialBalance: number;
+  initialPercentage: number;
+  wallets: BundlerWallet[];
 }
 
 export interface MultiTokensResponse {
@@ -160,11 +187,30 @@ export interface DevHolding {
   amount: number;
 }
 
+export interface RiskFees {
+  jito?: number;
+  network?: number;
+  bloom?: number;
+  maestro?: number;
+  soltradingbot?: number;
+  bullx?: number;
+  photon?: number;
+  trojan?: number;
+  padre?: number;
+  nextblock?: number;
+  totalTrading?: number;
+  totalTips?: number;
+  total?: number;
+  [key: string]: number | undefined;
+}
+
 export interface TokenRisk {
   snipers: RiskCategory;
   insiders: RiskCategory;
+  bundlers: BundlersCategory;
   top10: number;
   dev: DevHolding;
+  fees?: RiskFees;
   rugged: boolean;
   risks: TokenRiskFactor[];
   score: number;
@@ -174,6 +220,7 @@ export interface TokenRisk {
 export interface TokenRiskFactor {
   name: string;
   description: string;
+  value?: string | number;
   level: "warning" | "danger";
   score: number;
 }
@@ -376,6 +423,12 @@ export interface SearchResult {
   dev?: number;
   insiders?: number;
   snipers?: number;
+  bundlers?: {
+    count: number;
+    balance: number;
+    percentage: number;
+  };
+  riskScore?: number;
   socials?: {
     twitter?: string;
     telegram?: string;
