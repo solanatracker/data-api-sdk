@@ -373,6 +373,16 @@ export interface SearchParams {
   tiktok?: string;
   github?: string;
   
+  // Bundler Filters
+  minBundlers?: number;
+  maxBundlers?: number;
+  minBundlerPercentage?: number;
+  maxBundlerPercentage?: number;
+  
+  // Risk Score Filters
+  minRiskScore?: number;
+  maxRiskScore?: number;
+  
   // Fees Filters
   minFeesTotal?: number;
   maxFeesTotal?: number;
@@ -380,6 +390,20 @@ export interface SearchParams {
   maxFeesTrading?: number;
   minFeesTips?: number;
   maxFeesTips?: number;
+  
+  // Image Filters
+  hasImage?: boolean;
+  image?: string;
+  
+  // Socials Filter
+  hasSocials?: boolean;
+  
+  // Launchpad Filter
+  launchpad?: string;
+  
+  // Graduated Filters
+  minGraduatedAt?: number;
+  maxGraduatedAt?: number;
   
   [key: string]: string | number | boolean | undefined;
 }
@@ -451,6 +475,25 @@ export interface SearchResult {
     tx: string;
     time: number;
   };
+  launchpad?: {
+    name: string;
+    curvePercentage?: number;
+  };
+  graduatedAt?: number;
+  events?: {
+    "1m"?: { priceChangePercentage: number };
+    "5m"?: { priceChangePercentage: number };
+    "15m"?: { priceChangePercentage: number };
+    "30m"?: { priceChangePercentage: number };
+    "1h"?: { priceChangePercentage: number };
+    "2h"?: { priceChangePercentage: number };
+    "3h"?: { priceChangePercentage: number };
+    "4h"?: { priceChangePercentage: number };
+    "5h"?: { priceChangePercentage: number };
+    "6h"?: { priceChangePercentage: number };
+    "12h"?: { priceChangePercentage: number };
+    "24h"?: { priceChangePercentage: number };
+  };
 }
 
 export interface SearchResponse {
@@ -459,6 +502,7 @@ export interface SearchResponse {
   total?: number;
   pages?: number;
   page?: number;
+  cursor?: string;
   nextCursor?: string;
   hasMore?: boolean;
 }
