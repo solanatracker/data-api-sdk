@@ -965,6 +965,8 @@ export interface ChartDataParams {
   timezone?: string | 'current';
   /** Enable live cache for faster response times (default: false) */
   fastCache?: boolean;
+  /** Currency for price data (default: "usd") */
+  currency?: 'usd' | 'eur' | 'sol';
 }
 
 /**

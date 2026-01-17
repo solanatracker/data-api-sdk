@@ -904,7 +904,8 @@ export class Client {
     removeOutliers?: boolean,
     dynamicPools?: boolean,
     timezone?: string | 'current',
-    fastCache?: boolean
+    fastCache?: boolean,
+    currency?: 'usd' | 'eur' | 'sol'
   ): Promise<ChartResponse>;
   async getChartData(
     tokenAddressOrParams: string | ChartDataParams,
@@ -915,7 +916,8 @@ export class Client {
     removeOutliers?: boolean,
     dynamicPools?: boolean,
     timezone?: string | 'current',
-    fastCache?: boolean
+    fastCache?: boolean,
+    currency?: 'usd' | 'eur' | 'sol'
   ): Promise<ChartResponse> {
     // Handle object parameter
     let tokenAddress: string;
@@ -930,6 +932,7 @@ export class Client {
       dynamicPools = params.dynamicPools ?? dynamicPools;
       timezone = params.timezone ?? timezone;
       fastCache = params.fastCache ?? fastCache;
+      currency = params.currency ?? currency;
     } else {
       tokenAddress = tokenAddressOrParams;
     }
@@ -953,6 +956,7 @@ export class Client {
       }
     }
     if (fastCache) params.append('fastCache', 'true');
+    if (currency && currency !== 'usd') params.append('currency', currency);
 
     const query = params.toString() ? `?${params.toString()}` : '';
     return this.request<ChartResponse>(`/chart/${tokenAddress}${query}`);
@@ -973,7 +977,8 @@ export class Client {
     marketCap?: boolean,
     removeOutliers?: boolean,
     timezone?: string | 'current',
-    fastCache?: boolean
+    fastCache?: boolean,
+    currency?: 'usd' | 'eur' | 'sol'
   ): Promise<ChartResponse>;
   async getPoolChartData(
     tokenAddressOrParams: string | ChartDataParams,
@@ -984,7 +989,8 @@ export class Client {
     marketCap?: boolean,
     removeOutliers?: boolean,
     timezone?: string | 'current',
-    fastCache?: boolean
+    fastCache?: boolean,
+    currency?: 'usd' | 'eur' | 'sol'
   ): Promise<ChartResponse> {
     // Handle object parameter
     let tokenAddress: string;
@@ -1001,6 +1007,7 @@ export class Client {
       removeOutliers = params.removeOutliers ?? removeOutliers;
       timezone = params.timezone ?? timezone;
       fastCache = params.fastCache ?? fastCache;
+      currency = params.currency ?? currency;
     } else {
       tokenAddress = tokenAddressOrParams;
       actualPoolAddress = poolAddress!;
@@ -1025,6 +1032,7 @@ export class Client {
       }
     }
     if (fastCache) params.append('fastCache', 'true');
+    if (currency && currency !== 'usd') params.append('currency', currency);
 
     const query = params.toString() ? `?${params.toString()}` : '';
     return this.request<ChartResponse>(`/chart/${tokenAddress}/${actualPoolAddress}${query}`);

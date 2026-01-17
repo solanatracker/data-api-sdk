@@ -6,7 +6,7 @@ const client = new Client({
 });
 
 // Get OHLCV chart data for a token
-export async function getTokenChartData(tokenAddress: string, timeframe: string = '1h') {
+export async function getTokenChartData(tokenAddress: string, timeframe: string = '1h', currency: 'usd' | 'eur' | 'sol' = 'usd') {
   try {
     const now = Math.floor(Date.now() / 1000);
     const startTime = now - (7 * 24 * 60 * 60); // Last 7 days
@@ -18,23 +18,27 @@ export async function getTokenChartData(tokenAddress: string, timeframe: string 
       timeTo: now,
       removeOutliers: true,
       dynamicPools: true,
-      fastCache: true
+      fastCache: true,
+      currency
     });
     
-    console.log(`\n📈 Chart ${timeframe} (${chart.oclhv.length} candles):`);
+    const currencySymbol = currency === 'usd' ? '$' : currency === 'eur' ? '€' : '';
+    const currencySuffix = currency === 'sol' ? ' SOL' : '';
+    
+    console.log(`\n📈 Chart ${timeframe} in ${currency.toUpperCase()} (${chart.oclhv.length} candles):`);
     
     if (chart.oclhv.length > 0) {
       const first = chart.oclhv[0];
       const last = chart.oclhv[chart.oclhv.length - 1];
       const change = ((last.close - first.open) / first.open) * 100;
       
-      console.log(`Start: $${first.open.toFixed(6)} → End: $${last.close.toFixed(6)} (${change.toFixed(1)}%)`);
+      console.log(`Start: ${currencySymbol}${first.open.toFixed(6)}${currencySuffix} → End: ${currencySymbol}${last.close.toFixed(6)}${currencySuffix} (${change.toFixed(1)}%)`);
       
       let high = Math.max(...chart.oclhv.map(c => c.high));
       let low = Math.min(...chart.oclhv.map(c => c.low));
       let volume = chart.oclhv.reduce((sum, c) => sum + c.volume, 0);
       
-      console.log(`High: $${high.toFixed(6)} / Low: $${low.toFixed(6)}`);
+      console.log(`High: ${currencySymbol}${high.toFixed(6)}${currencySuffix} / Low: ${currencySymbol}${low.toFixed(6)}${currencySuffix}`);
       console.log(`Volume: $${volume.toFixed(0)}`);
     }
     
@@ -45,7 +49,7 @@ export async function getTokenChartData(tokenAddress: string, timeframe: string 
 }
 
 // Chart for specific pool
-export async function getPoolChartData(tokenAddress: string, poolAddress: string, timeframe: string = '1h') {
+export async function getPoolChartData(tokenAddress: string, poolAddress: string, timeframe: string = '1h', currency: 'usd' | 'eur' | 'sol' = 'usd') {
   try {
     const now = Math.floor(Date.now() / 1000);
     
@@ -54,10 +58,14 @@ export async function getPoolChartData(tokenAddress: string, poolAddress: string
       poolAddress,
       type: timeframe,
       timeTo: now,
-      fastCache: true
+      fastCache: true,
+      currency
     });
     
-    console.log(`\n📊 Pool Chart ${timeframe}:`);
+    const currencySymbol = currency === 'usd' ? '$' : currency === 'eur' ? '€' : '';
+    const currencySuffix = currency === 'sol' ? ' SOL' : '';
+    
+    console.log(`\n📊 Pool Chart ${timeframe} in ${currency.toUpperCase()}:`);
     console.log(`Candles: ${chart.oclhv.length}`);
     
     if (chart.oclhv.length > 0) {
@@ -65,7 +73,7 @@ export async function getPoolChartData(tokenAddress: string, poolAddress: string
       const last = chart.oclhv[chart.oclhv.length - 1];
       const change = ((last.close - first.open) / first.open) * 100;
       
-      console.log(`${first.open.toFixed(6)} → ${last.close.toFixed(6)} (${change.toFixed(1)}%)`);
+      console.log(`${currencySymbol}${first.open.toFixed(6)}${currencySuffix} → ${currencySymbol}${last.close.toFixed(6)}${currencySuffix} (${change.toFixed(1)}%)`);
     }
     
     return chart;

@@ -4,7 +4,7 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 
 [![npm version](https://badge.fury.io/js/@solana-tracker%2Fdata-api.svg)](https://badge.fury.io/js/@solana-tracker%2Fdata-api)
 
-## Features
+## Features (Summary)
 
 - Full TypeScript support with detailed interfaces for all API responses
 - Comprehensive coverage of all Solana Tracker Data API endpoints
@@ -13,9 +13,9 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 - Compatible with both Node.js and browser environments
 - Enhanced search with 60+ filter parameters including holder distribution, social media, fees, and more
 - Cursor-based pagination for efficient deep searches
-- **NEW**: Top performers endpoint - get the best performing tokens launched today
+- Top performers endpoint - get the best performing tokens launched today
 - Token filtering for overview endpoints (Memescope / Pulse overview) (graduated, graduating, latest)
-- *Paginated token holders endpoint for efficient holder data retrieval (5000 per page limit)
+- Paginated token holders endpoint for efficient holder data retrieval (5000 per page limit)
 - Aggregated price updates across all pools for a token via WebSocket (min, median, max, average, top pools setc.)
 - Smart primary pool routing - automatically switches to new main pool (price-by-token, token:{token}:primary rooms)
 - (Global Fees) Platform and network fees tracking via WebSocket and API
@@ -1150,6 +1150,7 @@ const chartData = await client.getChartData({
   dynamicPools: true, // NEW: Dynamic pool selection
   timezone: 'current', // NEW: Use current timezone or specify like 'America/New_York'
   fastCache: true, // NEW: Enable fast cache for better performance
+  currency: 'usd', // NEW: Currency for price data - 'usd' (default), 'eur', or 'sol'
 });
 
 // Method 2: Traditional syntax (still supported)
@@ -1162,8 +1163,22 @@ const chartData = await client.getChartData(
   true, // removeOutliers
   true, // dynamicPools
   'current', // timezone
-  true // fastCache
+  true, // fastCache
+  'eur' // currency
 );
+
+// Get chart in different currencies
+const chartInEur = await client.getChartData({
+  tokenAddress: 'tokenAddress',
+  type: '1h',
+  currency: 'eur',
+});
+
+const chartInSol = await client.getChartData({
+  tokenAddress: 'tokenAddress',
+  type: '1h',
+  currency: 'sol',
+});
 
 // Get OHLCV data for a specific token and pool
 const poolChartData = await client.getPoolChartData({
@@ -1172,6 +1187,7 @@ const poolChartData = await client.getPoolChartData({
   type: '15m',
   timezone: 'UTC',
   fastCache: false,
+  currency: 'usd', // Also supports currency option
 });
 
 // Get holder count chart data
