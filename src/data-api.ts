@@ -19,6 +19,9 @@ import {
   WalletResponse,
   ChartResponse,
   HoldersChartResponse,
+  SnipersChartResponse,
+  InsidersChartResponse,
+  BundlersChartResponse,
   PnLResponse,
   TokenPnLResponse,
   FirstBuyerData,
@@ -1061,6 +1064,81 @@ export class Client {
 
     const query = params.toString() ? `?${params.toString()}` : '';
     return this.request<HoldersChartResponse>(`/holders/chart/${tokenAddress}${query}`);
+  }
+
+  /**
+   * Get snipers percentage chart data
+   * @param tokenAddress Token address
+   * @param type Time interval (e.g., "1s", "1m", "1h", "1d")
+   * @param timeFrom Start time (Unix timestamp in seconds)
+   * @param timeTo End time (Unix timestamp in seconds)
+   * @returns Snipers percentage chart data
+   */
+  async getSnipersChart(
+    tokenAddress: string,
+    type?: string,
+    timeFrom?: number,
+    timeTo?: number
+  ): Promise<SnipersChartResponse> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+
+    const params = new URLSearchParams();
+    if (type) params.append('type', type);
+    if (timeFrom) params.append('time_from', timeFrom.toString());
+    if (timeTo) params.append('time_to', timeTo.toString());
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<SnipersChartResponse>(`/snipers/chart/${tokenAddress}${query}`);
+  }
+
+  /**
+   * Get insiders percentage chart data
+   * @param tokenAddress Token address
+   * @param type Time interval (e.g., "1s", "1m", "1h", "1d")
+   * @param timeFrom Start time (Unix timestamp in seconds)
+   * @param timeTo End time (Unix timestamp in seconds)
+   * @returns Insiders percentage chart data
+   */
+  async getInsidersChart(
+    tokenAddress: string,
+    type?: string,
+    timeFrom?: number,
+    timeTo?: number
+  ): Promise<InsidersChartResponse> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+
+    const params = new URLSearchParams();
+    if (type) params.append('type', type);
+    if (timeFrom) params.append('time_from', timeFrom.toString());
+    if (timeTo) params.append('time_to', timeTo.toString());
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<InsidersChartResponse>(`/insiders/chart/${tokenAddress}${query}`);
+  }
+
+  /**
+   * Get bundlers percentage chart data
+   * @param tokenAddress Token address
+   * @param type Time interval (e.g., "1s", "1m", "1h", "1d")
+   * @param timeFrom Start time (Unix timestamp in seconds)
+   * @param timeTo End time (Unix timestamp in seconds)
+   * @returns Bundlers percentage chart data
+   */
+  async getBundlersChart(
+    tokenAddress: string,
+    type?: string,
+    timeFrom?: number,
+    timeTo?: number
+  ): Promise<BundlersChartResponse> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+
+    const params = new URLSearchParams();
+    if (type) params.append('type', type);
+    if (timeFrom) params.append('time_from', timeFrom.toString());
+    if (timeTo) params.append('time_to', timeTo.toString());
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<BundlersChartResponse>(`/bundlers/chart/${tokenAddress}${query}`);
   }
 
   // ======== PNL DATA ENDPOINTS ========

@@ -656,6 +656,33 @@ export interface HoldersChartResponse {
   holders: HolderChartData[];
 }
 
+export interface SnipersChartData {
+  percentage: number;
+  time: number;
+}
+
+export interface SnipersChartResponse {
+  snipers: SnipersChartData[];
+}
+
+export interface InsidersChartData {
+  percentage: number;
+  time: number;
+}
+
+export interface InsidersChartResponse {
+  insiders: InsidersChartData[];
+}
+
+export interface BundlersChartData {
+  percentage: number;
+  time: number;
+}
+
+export interface BundlersChartResponse {
+  bundlers: BundlersChartData[];
+}
+
 export interface PnLData {
   holding: number;
   held: number;

@@ -1192,6 +1192,15 @@ const poolChartData = await client.getPoolChartData({
 
 // Get holder count chart data
 const holdersChart = await client.getHoldersChart('tokenAddress', '1d');
+
+// Get snipers percentage chart data
+const snipersChart = await client.getSnipersChart('tokenAddress', '1d');
+
+// Get insiders percentage chart data
+const insidersChart = await client.getInsidersChart('tokenAddress', '1d');
+
+// Get bundlers percentage chart data
+const bundlersChart = await client.getBundlersChart('tokenAddress', '1d');
 ```
 
 ### PnL Endpoints
@@ -1410,6 +1419,36 @@ interface Top10HoldersUpdate {
   totalPercentage: number;
   previousPercentage: number | null;
   timestamp: number;
+}
+
+// Snipers chart data
+interface SnipersChartData {
+  percentage: number;
+  time: number;
+}
+
+interface SnipersChartResponse {
+  snipers: SnipersChartData[];
+}
+
+// Insiders chart data
+interface InsidersChartData {
+  percentage: number;
+  time: number;
+}
+
+interface InsidersChartResponse {
+  insiders: InsidersChartData[];
+}
+
+// Bundlers chart data
+interface BundlersChartData {
+  percentage: number;
+  time: number;
+}
+
+interface BundlersChartResponse {
+  bundlers: BundlersChartData[];
 }
 ```
 
