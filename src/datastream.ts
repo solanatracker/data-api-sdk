@@ -6,7 +6,8 @@ import {
   TokenEvents,
   TokenRisk,
   WalletBalanceUpdate,
-  TokenStats
+  TokenStats,
+  TokenStatsTotal
 } from './interfaces';
 
 /**
@@ -37,6 +38,9 @@ export enum DatastreamRoom {
   INSIDERS = 'insider',
   // Bundlers
   BUNDLERS = 'bundlers',
+  // Volume
+  VOLUME_POOL = 'volume:pool',
+  VOLUME_TOKEN = 'volume:token',
 }
 
 /**
@@ -171,12 +175,14 @@ class SubscriptionMethods {
   public price: PriceSubscriptions;
   public tx: TransactionSubscriptions;
   public stats: StatsSubscriptions;
+  public volume: VolumeSubscriptions;
 
   constructor(datastream: Datastream) {
     this.ds = datastream;
     this.price = new PriceSubscriptions(datastream);
     this.tx = new TransactionSubscriptions(datastream);
     this.stats = new StatsSubscriptions(datastream);
+    this.volume = new VolumeSubscriptions(datastream);
   }
 
   /**
@@ -370,9 +376,11 @@ class SubscriptionMethods {
  */
 class StatsSubscriptions {
   private ds: Datastream;
+  public total: StatsTotalSubscriptions;
 
   constructor(datastream: Datastream) {
     this.ds = datastream;
+    this.total = new StatsTotalSubscriptions(datastream);
   }
 
   /**
@@ -391,6 +399,64 @@ class StatsSubscriptions {
    */
   pool(poolId: string): SubscribeResponse<TokenStats> {
     return this.ds._subscribe<TokenStats>(`stats:pool:${poolId}`);
+  }
+}
+
+/**
+ * Total stats room subscription methods
+ */
+class StatsTotalSubscriptions {
+  private ds: Datastream;
+
+  constructor(datastream: Datastream) {
+    this.ds = datastream;
+  }
+
+  /**
+   * Subscribe to total stats updates for a token
+   * Room: stats:token:{tokenAddress}:total
+   *
+   * Note: this room emits the stats object directly.
+   */
+  token(tokenAddress: string): SubscribeResponse<TokenStatsTotal> {
+    return this.ds._subscribe<TokenStatsTotal>(`stats:token:${tokenAddress}:total`);
+  }
+
+  /**
+   * Subscribe to total stats updates for a pool
+   * Room: stats:pool:{poolId}:total
+   *
+   * Note: this room emits the stats object directly.
+   */
+  pool(poolId: string): SubscribeResponse<TokenStatsTotal> {
+    return this.ds._subscribe<TokenStatsTotal>(`stats:pool:${poolId}:total`);
+  }
+}
+
+/**
+ * Volume-related subscription methods
+ */
+class VolumeSubscriptions {
+  private ds: Datastream;
+
+  constructor(datastream: Datastream) {
+    this.ds = datastream;
+  }
+
+  /**
+   * Subscribe to USD volume aggregated per pool (flushed every ~50ms)
+   * Room: volume:pool:{poolAddress}
+   */
+  pool(poolAddress: string): SubscribeResponse<VolumePoolUpdate> {
+    return this.ds._subscribe<VolumePoolUpdate>(`volume:pool:${poolAddress}`);
+  }
+
+  /**
+   * Subscribe to USD volume aggregated per token (cross-pool deduplicated, flushed every ~50ms)
+   * Room: volume:token:{tokenAddress}
+   */
+  token(tokenAddress: string): SubscribeResponse<VolumeTokenUpdate> {
+    return this.ds._subscribe<VolumeTokenUpdate>(`volume:token:${tokenAddress}`);
   }
 }
 
@@ -1514,6 +1580,21 @@ export interface AggregatedPriceUpdate {
     liquidity: number;
     market: string;
   }>;
+}
+
+export interface VolumePoolUpdate {
+  pool: string;
+  token: string;
+  volume: number;
+  txCount: number;
+  timestamp: number;
+}
+
+export interface VolumeTokenUpdate {
+  token: string;
+  volume: number;
+  txCount: number;
+  timestamp: number;
 }
 
 /**

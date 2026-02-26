@@ -13,7 +13,9 @@ export {
   type HolderUpdate,
   type WalletTransaction,
   type TokenMetadata,
-  type BundlerUpdate
+  type BundlerUpdate,
+  type VolumePoolUpdate,
+  type VolumeTokenUpdate
 } from './datastream';
 
 // Export all interfaces

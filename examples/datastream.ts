@@ -138,6 +138,63 @@ const subscribeToPoolChanges = (poolId: string = POOL_ADDRESS) => {
 };
 
 // ************************************
+// Volume + total stats subscription examples
+// ************************************
+
+// Subscribe to USD volume aggregated per pool
+const subscribeToPoolVolume = (poolId: string = POOL_ADDRESS) => {
+  const subscription = dataStream.subscribe.volume.pool(poolId).on((data) => {
+    console.log('Pool volume update:', data);
+    console.log(`Pool: ${data.pool}`);
+    console.log(`Token: ${data.token}`);
+    console.log(`Volume (USD): $${data.volume.toFixed(2)}`);
+    console.log(`Tx Count: ${data.txCount}`);
+    console.log(`Timestamp: ${new Date(data.timestamp).toLocaleTimeString()}`);
+  });
+
+  return subscription;
+};
+
+// Subscribe to USD volume aggregated per token
+const subscribeToTokenVolume = (tokenAddress: string = TOKEN_ADDRESS) => {
+  const subscription = dataStream.subscribe.volume.token(tokenAddress).on((data) => {
+    console.log('Token volume update:', data);
+    console.log(`Token: ${data.token}`);
+    console.log(`Volume (USD): $${data.volume.toFixed(2)}`);
+    console.log(`Tx Count: ${data.txCount}`);
+    console.log(`Timestamp: ${new Date(data.timestamp).toLocaleTimeString()}`);
+  });
+
+  return subscription;
+};
+
+// Subscribe to total stats object for a pool
+const subscribeToPoolStatsTotal = (poolId: string = POOL_ADDRESS) => {
+  const subscription = dataStream.subscribe.stats.total.pool(poolId).on((stats) => {
+    console.log('Pool total stats update:', stats);
+    console.log(`Buys: ${stats.buys}`);
+    console.log(`Sells: ${stats.sells}`);
+    console.log(`Total tx: ${stats.total}`);
+    console.log(`Volume (USD): $${stats.volume.toFixed(2)}`);
+  });
+
+  return subscription;
+};
+
+// Subscribe to total stats object for a token
+const subscribeToTokenStatsTotal = (tokenAddress: string = TOKEN_ADDRESS) => {
+  const subscription = dataStream.subscribe.stats.total.token(tokenAddress).on((stats) => {
+    console.log('Token total stats update:', stats);
+    console.log(`Buys: ${stats.buys}`);
+    console.log(`Sells: ${stats.sells}`);
+    console.log(`Total tx: ${stats.total}`);
+    console.log(`Volume (USD): $${stats.volume.toFixed(2)}`);
+  });
+
+  return subscription;
+};
+
+// ************************************
 // Price subscription examples
 // ************************************
 
@@ -283,6 +340,10 @@ const subscribeToInsiders = (tokenAddress: string = TOKEN_ADDRESS) => {
 // subscribeToHolders(TOKEN_ADDRESS);
 // subscribeToTokenChanges(TOKEN_ADDRESS);
 // subscribeToPoolChanges(POOL_ADDRESS);
+// subscribeToPoolVolume(POOL_ADDRESS);
+// subscribeToTokenVolume(TOKEN_ADDRESS);
+// subscribeToPoolStatsTotal(POOL_ADDRESS);
+// subscribeToTokenStatsTotal(TOKEN_ADDRESS);
 // subscribeToTokenPrice(TOKEN_ADDRESS);
 // subscribeToAllTokenPrices(TOKEN_ADDRESS);
 // subscribeToPoolPrice(POOL_ADDRESS);

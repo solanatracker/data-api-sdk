@@ -111,11 +111,15 @@ fetchTokenInfo();
 
 6. **Live Stats Subscriptions**: Subscribe to real-time statistics for tokens and pools across all timeframes (1m, 5m, 15m, 30m, 1h, 4h, 24h) using `.stats.token()` and `.stats.pool()` methods
 
-7. **Developer Holdings Tracking**: Monitor developer/creator wallet holdings in real-time with `.dev.holding()` method
+7. **Total Stats Rooms**: Subscribe to direct total stats objects with `.stats.total.token()` and `.stats.total.pool()`
 
-8. **Top 10 Holders Monitoring**: Track the top 10 holders and their combined percentage of token supply with `.top10()` method
+8. **Volume Rooms**: Subscribe to high-frequency USD volume aggregation via `.volume.pool()` and `.volume.token()`
 
-9. **Global Fees Tracking**: Monitor platform and network fees via WebSocket and API
+9. **Developer Holdings Tracking**: Monitor developer/creator wallet holdings in real-time with `.dev.holding()` method
+
+10. **Top 10 Holders Monitoring**: Track the top 10 holders and their combined percentage of token supply with `.top10()` method
+
+11. **Global Fees Tracking**: Monitor platform and network fees via WebSocket and API
 
 
 ## Real-Time Data Streaming (Premium plan or higher only)
@@ -386,6 +390,12 @@ dataStream.subscribe.wallet(walletAddress).tokenBalance(tokenAddress); // Specif
 // Live statistics (NEW)
 dataStream.subscribe.stats.token(tokenAddress); // Live stats for a token
 dataStream.subscribe.stats.pool(poolId); // Live stats for a pool
+dataStream.subscribe.stats.total.token(tokenAddress); // Direct total stats object for a token
+dataStream.subscribe.stats.total.pool(poolId); // Direct total stats object for a pool
+
+// Volume rooms (NEW)
+dataStream.subscribe.volume.pool(poolId); // USD volume per pool (flush ~50ms)
+dataStream.subscribe.volume.token(tokenAddress); // USD volume per token (cross-pool deduplicated, flush ~50ms)
 
 // Pump.fun stages
 dataStream.subscribe.graduating(); // Graduating tokens

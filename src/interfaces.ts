@@ -792,6 +792,13 @@ export interface TokenStats {
   "24h"?: TimeframeStats;
 }
 
+export interface TokenStatsTotal {
+  buys: number;
+  sells: number;
+  total: number;
+  volume: number;
+}
+
 export interface WalletChartDataPoint {
   date: string;
   value: number;
