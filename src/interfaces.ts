@@ -161,6 +161,12 @@ export interface PoolInfo {
     tokenProgram?: string;
     isMayhemMode?: boolean;
   };
+  /** Pool creation data - only present on new/graduated pool messages */
+  creation?: {
+    creator: string;
+    created_tx: string;
+    created_time: number;
+  };
 }
 
 export interface PriceChangeData {
@@ -284,9 +290,25 @@ export interface DeployerToken {
   totalTransactions: number;
 }
 
-export interface DeployerTokensResponse {
+export interface DeployerTokensResponse<T = DeployerToken> {
   total: number;
-  tokens: DeployerToken[];
+  tokens: T[];
+}
+
+/**
+ * Parameters for the deployer endpoint (/deployer/:wallet)
+ */
+export interface DeployerParams {
+  /** Page number (default: 1) */
+  page?: number;
+  /** Number of items per page (default: 250, max: 500, max: 100 when format=full) */
+  limit?: number;
+  /** Filter by market(s) - single value or array (e.g., 'raydium' or ['raydium', 'orca', 'pumpfun']) */
+  market?: string | string[];
+  /** Filter by launchpad(s) - single value or array (e.g., 'pumpfun' or ['pumpfun', 'boop']) */
+  launchpad?: string | string[];
+  /** Return full token objects (same shape as /tokens/:token). Max limit is capped at 100. */
+  format?: 'full';
 }
 
 export interface SearchParams {
@@ -352,7 +374,8 @@ export interface SearchParams {
   
   // Token Characteristics
   lpBurn?: number;
-  market?: string;
+  /** Filter by market(s) - single value or array (e.g., 'raydium' or ['raydium', 'orca', 'pumpfun']) */
+  market?: string | string[];
   freezeAuthority?: string;
   mintAuthority?: string;
   deployer?: string;
@@ -399,13 +422,17 @@ export interface SearchParams {
   hasSocials?: boolean;
   
   // Launchpad Filter
-  launchpad?: string;
+  /** Filter by launchpad(s) - single value or array (e.g., 'pumpfun' or ['pumpfun', 'boop']) */
+  launchpad?: string | string[];
   
   // Graduated Filters
   minGraduatedAt?: number;
   maxGraduatedAt?: number;
   
-  [key: string]: string | number | boolean | undefined;
+  /** Return full token objects (same shape as /tokens/:token). Max limit is capped at 100. */
+  format?: 'full';
+  
+  [key: string]: string | number | boolean | string[] | undefined;
 }
 
 export interface SearchResult {
@@ -496,9 +523,9 @@ export interface SearchResult {
   };
 }
 
-export interface SearchResponse {
+export interface SearchResponse<T = SearchResult> {
   status: string;
-  data: SearchResult[];
+  data: T[];
   total?: number;
   pages?: number;
   page?: number;

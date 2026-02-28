@@ -6,6 +6,7 @@ import {
   AthPrice,
   BundlersResponse,
   DeployerTokensResponse,
+  DeployerParams,
   SearchParams,
   SearchResponse,
   TokenOverview,
@@ -403,38 +404,47 @@ export class Client {
   /**
    * Get tokens created by a specific wallet with pagination
    * @param wallet The deployer wallet address
-   * @param page Page number (default: 1)
-   * @param limit Number of items per page (default: 250, max: 500)
-   * @returns List of tokens created by the deployer
+   * @param pageOrParams Page number (legacy) or DeployerParams object
+   * @param limit Number of items per page when using legacy positional args
+   * @returns List of tokens created by the deployer (TokenDetailResponse items when format=full)
    */
   async getTokensByDeployer(
     wallet: string,
-    page?: number,
+    params: DeployerParams & { format: 'full' }
+  ): Promise<DeployerTokensResponse<TokenDetailResponse>>;
+  async getTokensByDeployer(
+    wallet: string,
+    pageOrParams?: number | DeployerParams,
     limit?: number
-  ): Promise<DeployerTokensResponse> {
+  ): Promise<DeployerTokensResponse>;
+  async getTokensByDeployer(
+    wallet: string,
+    pageOrParams?: number | DeployerParams,
+    limit?: number
+  ): Promise<DeployerTokensResponse | DeployerTokensResponse<TokenDetailResponse>> {
     this.validatePublicKey(wallet, 'wallet');
 
-    const params = new URLSearchParams();
-    if (page) params.append('page', page.toString());
-    if (limit) params.append('limit', limit.toString());
+    let deployerParams: Record<string, any> = {};
+    if (typeof pageOrParams === 'number') {
+      if (pageOrParams) deployerParams.page = pageOrParams;
+      if (limit) deployerParams.limit = limit;
+    } else if (pageOrParams) {
+      deployerParams = { ...pageOrParams };
+    }
 
-    const query = params.toString() ? `?${params.toString()}` : '';
-    return this.request<DeployerTokensResponse>(`/deployer/${wallet}${query}`);
+    const query = this.buildQueryString(deployerParams);
+    return this.request(`/deployer/${wallet}${query}`);
   }
 
   /**
    * Search for tokens with flexible filtering options
    * @param params Search parameters and filters
-   * @returns Search results
+   * @returns Search results (TokenDetailResponse items when format=full)
    */
-  async searchTokens(params: SearchParams): Promise<SearchResponse> {
-    const queryParams = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined) {
-        queryParams.append(key, value.toString());
-      }
-    }
-    return this.request<SearchResponse>(`/search?${queryParams}`);
+  async searchTokens(params: SearchParams & { format: 'full' }): Promise<SearchResponse<TokenDetailResponse>>;
+  async searchTokens(params: SearchParams): Promise<SearchResponse>;
+  async searchTokens(params: SearchParams): Promise<SearchResponse | SearchResponse<TokenDetailResponse>> {
+    return this.request<SearchResponse>(`/search${this.buildQueryString(params)}`);
   }
 
   /**

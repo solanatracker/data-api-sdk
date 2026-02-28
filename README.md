@@ -73,7 +73,44 @@ fetchTokenInfo();
 
 #### Latest Features:
 
-1. **Top Performers Endpoint**: Get the best performing tokens launched today:
+1. **Multiple Markets & Launchpads**: `market` and `launchpad` now accept comma-separated values or arrays on both `/search` and `/deployer`:
+   ```typescript
+   // Search across multiple markets
+   const results = await client.searchTokens({
+     market: ['raydium', 'orca', 'pumpfun'],
+     launchpad: ['pumpfun', 'boop'],
+     minLiquidity: 10000,
+   });
+
+   // Filter deployer tokens by market and launchpad
+   const deployerTokens = await client.getTokensByDeployer('walletAddress', {
+     market: ['raydium', 'pumpfun'],
+     launchpad: 'pumpfun',
+   });
+   ```
+
+2. **Full Token Format**: `format=full` returns results as full token objects (same shape as `/tokens/:token`) on both `/search` and `/deployer`:
+   ```typescript
+   // Search with full token details (max limit: 100)
+   const fullResults = await client.searchTokens({
+     query: 'TRUMP',
+     format: 'full',
+     limit: 50,
+   });
+   // fullResults.data items are TokenDetailResponse objects (token, pools, events, risk, etc.)
+
+   // Deployer tokens with full details
+   const fullDeployer = await client.getTokensByDeployer('walletAddress', {
+     format: 'full',
+     limit: 50,
+   });
+   ```
+
+3. **Deployer Endpoint Enhancements**: The `/deployer` endpoint now supports `launchpad`, `market`, and `format` filters via a params object (backward compatible with positional args).
+
+4. **Pool Creation Data**: New and graduated pool messages now include `creation` data (creator, created_tx, created_time) inside the pool object.
+
+5. **Top Performers Endpoint**: Get the best performing tokens launched today:
    ```typescript
    const topPerformers = await client.getTopPerformers('1h');
    // Valid timeframes: '5m', '15m', '30m', '1h', '6h', '12h', '24h'
@@ -612,6 +649,21 @@ const athPrice = await client.getAthPrice('tokenAddress');
 // Get tokens by deployer wallet
 const deployerTokens = await client.getTokensByDeployer('walletAddress');
 
+// Get tokens by deployer with filters (NEW)
+const filteredDeployerTokens = await client.getTokensByDeployer('walletAddress', {
+  page: 1,
+  limit: 100,
+  market: ['raydium', 'pumpfun'],
+  launchpad: 'pumpfun',
+});
+
+// Get deployer tokens with full token details (NEW)
+const fullDeployerTokens = await client.getTokensByDeployer('walletAddress', {
+  format: 'full',
+  limit: 50, // max 100 when format=full
+});
+// fullDeployerTokens.tokens are TokenDetailResponse objects
+
 // Get latest tokens
 const latestTokens = await client.getLatestTokens(100);
 
@@ -769,6 +821,28 @@ const graduatingTokens = await client.searchTokens({
   sortBy: 'curvePercentage',
   sortOrder: 'desc',
 });
+
+// Search across multiple markets (NEW)
+const multiMarketTokens = await client.searchTokens({
+  market: ['raydium', 'orca', 'pumpfun'],
+  minLiquidity: 50000,
+  sortBy: 'volume_24h',
+  sortOrder: 'desc',
+});
+
+// Filter by multiple launchpads (NEW)
+const launchpadTokens = await client.searchTokens({
+  launchpad: ['pumpfun', 'boop'],
+  minMarketCap: 100000,
+});
+
+// Get full token objects from search (NEW)
+const fullTokenSearch = await client.searchTokens({
+  query: 'TRUMP',
+  format: 'full',
+  limit: 50, // max 100 when format=full
+});
+// fullTokenSearch.data items include: token, pools, events, risk, buys, sells, txns, holders
 
 // Search by social media presence
 const tokensWithTwitter = await client.searchTokens({
@@ -933,7 +1007,7 @@ const customSearch = await client.searchTokens({
 **Token Characteristics:**
 
 - `lpBurn` - LP token burn percentage (0-100)
-- `market` - Market identifier (e.g., `'pumpfun'`, `'raydium'`, `'meteora-dlmm'`)
+- `market` - Market identifier or array of markets (e.g., `'pumpfun'`, `'raydium'`, or `['raydium', 'orca', 'pumpfun']`)
 - `freezeAuthority` - Freeze authority address (use `'null'` for none)
 - `mintAuthority` - Mint authority address (use `'null'` for none)
 - `deployer` - Deployer wallet address
@@ -954,6 +1028,14 @@ const customSearch = await client.searchTokens({
 - `tiktok` - TikTok profile URL
 - `github` - GitHub repository URL
 
+**Launchpad Filter:**
+
+- `launchpad` - Launchpad name or array of names (e.g., `'pumpfun'`, or `['pumpfun', 'boop']`)
+
+**Format:**
+
+- `format` - Set to `'full'` to return full token objects (same shape as `/tokens/:token`). When `format=full`, max limit is capped at 100.
+
 **Fees Filters (in SOL):**
 
 - `minFeesTotal` / `maxFeesTotal` - Total fees paid
@@ -965,9 +1047,11 @@ const customSearch = await client.searchTokens({
 The search response includes pagination information and detailed token data:
 
 ```typescript
-interface SearchResponse {
+// Default response returns SearchResult items
+// With format: 'full', returns TokenDetailResponse items
+interface SearchResponse<T = SearchResult> {
   status: string;
-  data: SearchResult[]; // Array of token results
+  data: T[]; // Array of token results (SearchResult or TokenDetailResponse when format=full)
   total?: number; // Total number of results
   pages?: number; // Total number of pages
   page?: number; // Current page number
@@ -1353,15 +1437,30 @@ interface SearchResult {
   };
 }
 
-// Enhanced SearchResponse with pagination
-interface SearchResponse {
+// Enhanced SearchResponse with pagination (generic - defaults to SearchResult, TokenDetailResponse when format=full)
+interface SearchResponse<T = SearchResult> {
   status: string;
-  data: SearchResult[];
+  data: T[];
   total?: number;
   pages?: number;
   page?: number;
   nextCursor?: string; // For cursor-based pagination
   hasMore?: boolean;
+}
+
+// Deployer tokens response (generic - defaults to DeployerToken, TokenDetailResponse when format=full)
+interface DeployerTokensResponse<T = DeployerToken> {
+  total: number;
+  tokens: T[];
+}
+
+// Deployer endpoint parameters
+interface DeployerParams {
+  page?: number;
+  limit?: number; // max 500, max 100 when format=full
+  market?: string | string[]; // Single or multiple markets
+  launchpad?: string | string[]; // Single or multiple launchpads
+  format?: 'full'; // Return full token objects
 }
 
 // Paginated token holders response
