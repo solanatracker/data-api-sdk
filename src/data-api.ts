@@ -34,7 +34,42 @@ import {
   ProcessedEvent,
   SubscriptionResponse,
   ChartDataParams,
-  PaginatedTokenHoldersResponse
+  PaginatedTokenHoldersResponse,
+  PnlV2KOLLeaderboardParams,
+  PnlV2KOLLeaderboardResponse,
+  PnlV2KOLPeriodParams,
+  PnlV2KOLPeriodResponse,
+  PnlV2KOLCalendarParams,
+  PnlV2KOLCalendarResponse,
+  PnlV2KOLByDateParams,
+  PnlV2KOLByDateResponse,
+  PnlV2TopTradersParams,
+  PnlV2TopTradersResponse,
+  PnlV2TokenTradersParams,
+  PnlV2TokenTradersResponse,
+  PnlV2TokenFirstBuyersParams,
+  PnlV2WalletHistoryParams,
+  PnlV2WalletHistoryResponse,
+  PnlV2WalletPerformanceParams,
+  PnlV2WalletPerformanceResponse,
+  PnlV2WalletTokenPositionResponse,
+  PnlV2WalletHighlightsResponse,
+  PnlV2WalletRiskResponse,
+  PnlV2WalletStatusResponse,
+  PnlV2WalletRefreshResponse,
+  PnlV2WalletPositionsParams,
+  PnlV2WalletPositionsResponse,
+  PnlV2WalletChartParams,
+  PnlV2WalletChartResponse,
+  PnlV2WalletOverviewParams,
+  PnlV2WalletOverviewResponse,
+  PnlV2WalletTokenPositionParams,
+  PnlV2BatchWalletPositionsResponse,
+  PnlV2BatchWalletSummariesResponse,
+  PnlV2BatchTokenPositionsResponse,
+  PnlV2BatchPositionPairsResponse,
+  PnlV2BatchParams,
+  PnlV2WalletQueued,
 } from './interfaces';
 
 import { decodeBinaryEvents } from './event-processor';
@@ -80,7 +115,7 @@ export interface DataApiConfig {
 
 export interface RequestOptions {
   method: string;
-  body: any;
+  body?: any;
   /** Optional headers to include in the request */
   headers?: Record<string, string>;
   /** Disable logs for rate limit warnings */
@@ -335,9 +370,10 @@ export class Client {
    * @param tokenAddress The token's mint address
    * @returns Information about token holders
    */
-  async getTokenHolders(tokenAddress: string): Promise<TokenHoldersResponse> {
+  async getTokenHolders(tokenAddress: string, enrich?: 'identity' | 'walletPnl' | 'identity,walletPnl' | 'all' | '*'): Promise<TokenHoldersResponse> {
     this.validatePublicKey(tokenAddress, 'tokenAddress');
-    return this.request<TokenHoldersResponse>(`/tokens/${tokenAddress}/holders`);
+    const qs = enrich ? this.buildQueryString({ enrich }) : '';
+    return this.request<TokenHoldersResponse>(`/tokens/${tokenAddress}/holders${qs}`);
   }
 
   /**
@@ -1354,5 +1390,166 @@ export class Client {
     const events = decodeBinaryEvents(binaryData);
 
     return events;
+  }
+
+  // ======== PNL V2 ENDPOINTS ========
+
+  // -- Leaderboard --
+
+  async getPnlV2KOLLeaderboard(params?: PnlV2KOLLeaderboardParams): Promise<PnlV2KOLLeaderboardResponse> {
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2KOLLeaderboardResponse>(`/v2/pnl/leaderboard/kols${qs}`);
+  }
+
+  async getPnlV2KOLPeriodLeaderboard(params?: PnlV2KOLPeriodParams): Promise<PnlV2KOLPeriodResponse> {
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2KOLPeriodResponse>(`/v2/pnl/leaderboard/kols/period${qs}`);
+  }
+
+  async getPnlV2KOLCalendar(params?: PnlV2KOLCalendarParams): Promise<PnlV2KOLCalendarResponse> {
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2KOLCalendarResponse>(`/v2/pnl/leaderboard/kols/calendar${qs}`);
+  }
+
+  async getPnlV2KOLByDate(params?: PnlV2KOLByDateParams): Promise<PnlV2KOLByDateResponse> {
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2KOLByDateResponse>(`/v2/pnl/leaderboard/kols/date${qs}`);
+  }
+
+  // -- Top Traders --
+
+  async getPnlV2TopTraders(params?: PnlV2TopTradersParams): Promise<PnlV2TopTradersResponse> {
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2TopTradersResponse>(`/v2/pnl/leaderboard/top${qs}`);
+  }
+
+  // -- Token --
+
+  async getPnlV2TokenTraders(token: string, params?: PnlV2TokenTradersParams): Promise<PnlV2TokenTradersResponse> {
+    this.validatePublicKey(token, 'token');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2TokenTradersResponse>(`/v2/pnl/tokens/${token}/traders${qs}`);
+  }
+
+  async getPnlV2TokenFirstBuyers(token: string, params?: PnlV2TokenFirstBuyersParams): Promise<PnlV2TokenTradersResponse> {
+    this.validatePublicKey(token, 'token');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2TokenTradersResponse>(`/v2/pnl/tokens/${token}/first-buyers${qs}`);
+  }
+
+  // -- Wallet --
+
+  async getPnlV2WalletOverview(wallet: string, params?: PnlV2WalletOverviewParams): Promise<PnlV2WalletOverviewResponse | PnlV2WalletQueued> {
+    this.validatePublicKey(wallet, 'wallet');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2WalletOverviewResponse | PnlV2WalletQueued>(`/v2/pnl/wallets/${wallet}${qs}`);
+  }
+
+  async getPnlV2WalletHistory(wallet: string, params?: PnlV2WalletHistoryParams): Promise<PnlV2WalletHistoryResponse | PnlV2WalletQueued> {
+    this.validatePublicKey(wallet, 'wallet');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2WalletHistoryResponse | PnlV2WalletQueued>(`/v2/pnl/wallets/${wallet}/history${qs}`);
+  }
+
+  async getPnlV2WalletPerformance(wallet: string, params?: PnlV2WalletPerformanceParams): Promise<PnlV2WalletPerformanceResponse | PnlV2WalletQueued> {
+    this.validatePublicKey(wallet, 'wallet');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2WalletPerformanceResponse | PnlV2WalletQueued>(`/v2/pnl/wallets/${wallet}/performance${qs}`);
+  }
+
+  async getPnlV2WalletTokenPosition(wallet: string, token: string, params?: PnlV2WalletTokenPositionParams): Promise<PnlV2WalletTokenPositionResponse | PnlV2WalletQueued> {
+    this.validatePublicKey(wallet, 'wallet');
+    this.validatePublicKey(token, 'token');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2WalletTokenPositionResponse | PnlV2WalletQueued>(`/v2/pnl/wallets/${wallet}/tokens/${token}${qs}`);
+  }
+
+  async getPnlV2WalletHighlights(wallet: string): Promise<PnlV2WalletHighlightsResponse | PnlV2WalletQueued> {
+    this.validatePublicKey(wallet, 'wallet');
+    return this.request<PnlV2WalletHighlightsResponse | PnlV2WalletQueued>(`/v2/pnl/wallets/${wallet}/highlights`);
+  }
+
+  async getPnlV2WalletStatus(wallet: string): Promise<PnlV2WalletStatusResponse> {
+    this.validatePublicKey(wallet, 'wallet');
+    return this.request<PnlV2WalletStatusResponse>(`/v2/pnl/wallets/${wallet}/status`);
+  }
+
+  async refreshPnlV2Wallet(wallet: string): Promise<PnlV2WalletRefreshResponse> {
+    this.validatePublicKey(wallet, 'wallet');
+    return this.request<PnlV2WalletRefreshResponse>(`/v2/pnl/wallets/${wallet}/refresh`, {
+      method: 'POST',
+    });
+  }
+
+  async getPnlV2WalletRisk(wallet: string): Promise<PnlV2WalletRiskResponse | PnlV2WalletQueued> {
+    this.validatePublicKey(wallet, 'wallet');
+    return this.request<PnlV2WalletRiskResponse | PnlV2WalletQueued>(`/v2/pnl/wallets/${wallet}/risk`);
+  }
+
+  async getPnlV2WalletPositions(wallet: string, params?: PnlV2WalletPositionsParams): Promise<PnlV2WalletPositionsResponse | PnlV2WalletQueued> {
+    this.validatePublicKey(wallet, 'wallet');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2WalletPositionsResponse | PnlV2WalletQueued>(`/v2/pnl/wallets/${wallet}/positions${qs}`);
+  }
+
+  async getPnlV2WalletChart(wallet: string, params?: PnlV2WalletChartParams): Promise<PnlV2WalletChartResponse | PnlV2WalletQueued> {
+    this.validatePublicKey(wallet, 'wallet');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2WalletChartResponse | PnlV2WalletQueued>(`/v2/pnl/wallets/${wallet}/chart${qs}`);
+  }
+
+  // -- Batch --
+
+  /**
+   * Batch fetch lifetime PnL summaries for up to 100 wallets in one request.
+   * Duplicates are deduped server-side; if more than 100 unique wallets are sent,
+   * the server truncates and returns `truncated: true` in the response.
+   */
+  async batchPnlV2WalletSummaries(wallets: string[]): Promise<PnlV2BatchWalletSummariesResponse> {
+    if (wallets.length === 0) {
+      throw new ValidationError('At least one wallet is required');
+    }
+    if (wallets.length > 100) {
+      throw new ValidationError('Maximum 100 wallets per batch request');
+    }
+    return this.request<PnlV2BatchWalletSummariesResponse>('/v2/pnl/wallets/batch', {
+      method: 'POST',
+      body: JSON.stringify({ wallets }),
+    });
+  }
+
+  async batchPnlV2WalletTokenPositions(wallet: string, tokens: string[], params?: PnlV2BatchParams): Promise<PnlV2BatchWalletPositionsResponse> {
+    this.validatePublicKey(wallet, 'wallet');
+    if (tokens.length > 100) {
+      throw new ValidationError('Maximum 100 tokens per batch request');
+    }
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2BatchWalletPositionsResponse>(`/v2/pnl/wallets/${wallet}/positions/batch${qs}`, {
+      method: 'POST',
+      body: JSON.stringify({ tokens }),
+    });
+  }
+
+  async batchPnlV2TokenWalletPositions(token: string, wallets: string[], params?: PnlV2BatchParams): Promise<PnlV2BatchTokenPositionsResponse> {
+    this.validatePublicKey(token, 'token');
+    if (wallets.length > 200) {
+      throw new ValidationError('Maximum 200 wallets per batch request');
+    }
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2BatchTokenPositionsResponse>(`/v2/pnl/tokens/${token}/positions/batch${qs}`, {
+      method: 'POST',
+      body: JSON.stringify({ wallets }),
+    });
+  }
+
+  async batchPnlV2PositionPairs(pairs: Array<{ wallet: string; token: string }>, params?: PnlV2BatchParams): Promise<PnlV2BatchPositionPairsResponse> {
+    if (pairs.length > 200) {
+      throw new ValidationError('Maximum 200 pairs per batch request');
+    }
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PnlV2BatchPositionPairsResponse>(`/v2/pnl/positions/batch${qs}`, {
+      method: 'POST',
+      body: JSON.stringify({ pairs }),
+    });
   }
 }

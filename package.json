@@ -1,15 +1,15 @@
 {
     "name": "@solana-tracker/data-api",
-    "version": "0.2.3",
+    "version": "0.3.0",
     "description": "Official Solana Tracker Data API client for accessing Solana Data",
     "main": "dist/index.js",
     "module": "dist/index.mjs",
     "types": "dist/index.d.ts",
     "exports": {
         ".": {
+            "types": "./dist/index.d.ts",
             "import": "./dist/index.mjs",
-            "require": "./dist/index.js",
-            "types": "./dist/index.d.ts"
+            "require": "./dist/index.js"
         }
     },
     "scripts": {

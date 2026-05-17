@@ -41,6 +41,9 @@ export enum DatastreamRoom {
   // Volume
   VOLUME_POOL = 'volume:pool',
   VOLUME_TOKEN = 'volume:token',
+  // PnL
+  PNL_WALLET = 'pnl',
+  PNL_WALLET_SUMMARY = 'pnl:summary',
 }
 
 /**
@@ -176,6 +179,7 @@ class SubscriptionMethods {
   public tx: TransactionSubscriptions;
   public stats: StatsSubscriptions;
   public volume: VolumeSubscriptions;
+  public pnl: PnlSubscriptions;
 
   constructor(datastream: Datastream) {
     this.ds = datastream;
@@ -183,6 +187,7 @@ class SubscriptionMethods {
     this.tx = new TransactionSubscriptions(datastream);
     this.stats = new StatsSubscriptions(datastream);
     this.volume = new VolumeSubscriptions(datastream);
+    this.pnl = new PnlSubscriptions(datastream);
   }
 
   /**
@@ -457,6 +462,41 @@ class VolumeSubscriptions {
    */
   token(tokenAddress: string): SubscribeResponse<VolumeTokenUpdate> {
     return this.ds._subscribe<VolumeTokenUpdate>(`volume:token:${tokenAddress}`);
+  }
+}
+
+/**
+ * PnL-related subscription methods
+ */
+class PnlSubscriptions {
+  private ds: Datastream;
+
+  constructor(datastream: Datastream) {
+    this.ds = datastream;
+  }
+
+  /**
+   * Subscribe to trade and balance updates for a specific wallet+token position
+   * Room: pnl:{walletAddress}:{tokenAddress}
+   */
+  position(walletAddress: string, tokenAddress: string): SubscribeResponse<PnlPositionUpdate> {
+    return this.ds._subscribe<PnlPositionUpdate>(`pnl:${walletAddress}:${tokenAddress}`);
+  }
+
+  /**
+   * Subscribe to trade and balance updates for all token positions in a wallet
+   * Room: pnl:{walletAddress}
+   */
+  wallet(walletAddress: string): SubscribeResponse<PnlPositionUpdate> {
+    return this.ds._subscribe<PnlPositionUpdate>(`pnl:${walletAddress}`);
+  }
+
+  /**
+   * Subscribe to aggregated wallet summary updates
+   * Room: pnl:{walletAddress}:summary
+   */
+  summary(walletAddress: string): SubscribeResponse<PnlWalletUpdate> {
+    return this.ds._subscribe<PnlWalletUpdate>(`pnl:${walletAddress}:summary`);
   }
 }
 
@@ -1619,4 +1659,99 @@ export interface BundlerUpdate {
   previousPercentage: number;
   /** Total percentage held by all bundlers for this token */
   totalBundlerPercentage: number;
+}
+
+// ======== PNL DATASTREAM TYPES ========
+
+export interface PnlTradeUpdate {
+  type: 'tradeUpdate';
+  wallet: string;
+  token: string;
+  averageBuyAmountUsd: number | null;
+  averageSellAmountUsd: number | null;
+  avgCostPerToken: number | null;
+  buyCount: number;
+  currentBalance: number | null;
+  currentPrice: number | null;
+  currentValue: number | null;
+  firstBuyTime: number | null;
+  firstTradeTime: number | null;
+  holdingCostBasis: number | null;
+  lastBuyTime: number | null;
+  lastTradeTime: number | null;
+  proceeds: number | null;
+  realizedPnl: number | null;
+  sellCount: number;
+  soldCostBasis: number | null;
+  totalBought: number | null;
+  totalBuyUsd: number | null;
+  totalSellUsd: number | null;
+  totalSold: number | null;
+  totalTransactions: number;
+  unrealizedPnl: number | null;
+}
+
+export interface PnlBalanceUpdate {
+  type: 'balanceUpdate';
+  wallet: string;
+  token: string;
+  avgCostPerToken: number | null;
+  currentBalance: number | null;
+  currentPrice: number | null;
+  currentValue: number | null;
+  holdingCostBasis: number | null;
+  unrealizedPnl: number | null;
+}
+
+export interface PnlPriceUpdate {
+  type: 'priceUpdate';
+  wallet: string;
+  token: string;
+  currentBalance: number | null;
+  currentPrice: number | null;
+  currentValue: number | null;
+  holdingCostBasis: number | null;
+  unrealizedPnl: number | null;
+}
+
+export type PnlPositionUpdate = PnlTradeUpdate | PnlBalanceUpdate | PnlPriceUpdate;
+
+export interface PnlWalletPosition {
+  token: string;
+  avgCostPerToken: number | null;
+  currentBalance: number | null;
+  currentPrice: number | null;
+  currentValue: number | null;
+  holdingCostBasis: number | null;
+  unrealizedPnl: number | null;
+}
+
+export interface PnlWalletUpdate {
+  averages: {
+    buy: number | null;
+    sell: number | null;
+  };
+  counts: {
+    buys: number;
+    sells: number;
+    tokensHeldEver: number;
+    tokensTraded: number;
+    trades: number;
+  };
+  invested: number | null;
+  openPositions: {
+    cost: number | null;
+    value: number | null;
+  };
+  pnl: {
+    realized: number | null;
+    total: number | null;
+    unrealized: number | null;
+  };
+  proceeds: number | null;
+  roi: number | null;
+  timing: {
+    firstTrade: number | null;
+    lastTrade: number | null;
+  };
 }

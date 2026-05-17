@@ -15,7 +15,13 @@ export {
   type TokenMetadata,
   type BundlerUpdate,
   type VolumePoolUpdate,
-  type VolumeTokenUpdate
+  type VolumeTokenUpdate,
+  type PnlTradeUpdate,
+  type PnlBalanceUpdate,
+  type PnlPriceUpdate,
+  type PnlPositionUpdate,
+  type PnlWalletUpdate,
+  type PnlWalletPosition
 } from './datastream';
 
 // Export all interfaces

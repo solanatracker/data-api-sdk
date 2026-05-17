@@ -7,6 +7,7 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 ## Features (Summary)
 
 - Full TypeScript support with detailed interfaces for all API responses
+- **PnL v2**: REST endpoints under `/v2/pnl` (leaderboards, token traders, wallet analytics, wallet-summary batch, batch positions) and Datastream rooms `pnl:{wallet}`, `pnl:{wallet}:{token}`, `pnl:{wallet}:summary` — scoped to meme / tradable tokens, not SOL. Includes `pnlMode` (strict/adjusted/raw), unified wallet identity (KOL, bot, pool, developer, hacker, spam-dusting, exchange, platform tags), always-on token enrichment, and opt-in holder enrichment
 - Comprehensive coverage of all Solana Tracker Data API endpoints
 - Real-time data streaming via WebSocket (Datastream)
 - Built-in error handling with specific error types
@@ -26,6 +27,7 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 - Wallet balance subscription API
 - Snipers and insiders tracking via WebSocket
 - Support for all pool types including launchpad and meteora curve pools (Shows which platform token is released on, Moonshot, Bonk, Jupiter Studio etc)
+
 
 ## Installation
 
@@ -66,6 +68,24 @@ const fetchTokenInfo = async () => {
 fetchTokenInfo();
 ```
 
+## Examples
+
+Runnable samples live in the [`examples/`](examples/) folder. Copy a file, set your API key or WebSocket URL, and run with `npx ts-node` (or compile with TypeScript) after installing the package.
+
+| File | What it demonstrates |
+|------|----------------------|
+| [`examples/tokens.ts`](examples/tokens.ts) | Token info, holders, trending, search |
+| [`examples/prices.ts`](examples/prices.ts) | Price and multi-price endpoints |
+| [`examples/wallets.ts`](examples/wallets.ts) | Wallet balances and portfolio |
+| [`examples/trades.ts`](examples/trades.ts) | Token and pool trades |
+| [`examples/charts.ts`](examples/charts.ts) | OHLCV and holder/snipers charts |
+| [`examples/stats.ts`](examples/stats.ts) | Token and pool stats |
+| [`examples/bundlers.ts`](examples/bundlers.ts) | Bundler-related API usage |
+| [`examples/profit-loss.ts`](examples/profit-loss.ts) | **Legacy** PnL endpoints (`getWalletPnL`, `getTokenPnL`, first buyers, top traders) |
+| [`examples/pnl-v2.ts`](examples/pnl-v2.ts) | **PnL v2 REST**: leaderboards, token traders, wallet overview/history/performance/risk/chart, wallet-summary batch, batch positions (examples use a meme mint, not SOL) |
+| [`examples/pnl-v2-datastream.ts`](examples/pnl-v2-datastream.ts) | **PnL v2 Datastream**: `subscribe.pnl.position`, `.wallet`, `.summary` with `tradeUpdate`, `balanceUpdate`, `priceUpdate`, and wallet summary payloads |
+| [`examples/datastream.ts`](examples/datastream.ts) | WebSocket subscriptions (prices, txs, stats, volume, etc.) |
+| [`examples/utils.ts`](examples/utils.ts) | Shared helpers (`handleError`, formatting) |
 
 ## What's New
 
@@ -433,6 +453,11 @@ dataStream.subscribe.stats.total.pool(poolId); // Direct total stats object for 
 // Volume rooms (NEW)
 dataStream.subscribe.volume.pool(poolId); // USD volume per pool (flush ~50ms)
 dataStream.subscribe.volume.token(tokenAddress); // USD volume per token (cross-pool deduplicated, flush ~50ms)
+
+// PnL v2 (meme / tradable mints — not SOL)
+dataStream.subscribe.pnl.position(walletAddress, tokenAddress); // tradeUpdate + balanceUpdate + throttled priceUpdate for one position
+dataStream.subscribe.pnl.wallet(walletAddress); // all position updates for wallet
+dataStream.subscribe.pnl.summary(walletAddress); // wallet summary aggregates
 
 // Pump.fun stages
 dataStream.subscribe.graduating(); // Graduating tokens
@@ -1320,6 +1345,115 @@ const tokenPnL = await client.getTokenPnL({
   holdingCheck: true,
 });
 ```
+
+### PnL v2 REST (`/v2/pnl`)
+
+PnL v2 adds typed methods on `Client` for leaderboards, per-token traders, wallet analytics, and batch position lookups. Types are exported from the package with the `PnlV2` prefix (for example `PnlV2WalletOverviewResponse`, `PnlV2KOLLeaderboardParams`).
+
+**Token scope:** PnL v2 targets meme and tradable SPL positions (for example pump-style tokens). It is **not** for tracking SOL (native or wrapped `So111...`).
+
+Wallet endpoints may return a **queued** payload while the wallet is being indexed: check for `queued === true` and `indexed === false` (see `PnlV2WalletQueued`).
+
+#### `pnlMode` parameter
+
+Endpoints that accept `pnlMode` control how positions flagged by the invalid-PnL heuristic are counted toward realized PnL:
+
+| Mode | Behaviour |
+|------|-----------|
+| `strict` (default) | Flagged positions contribute **0** |
+| `adjusted` | Flagged positions get a cost-basis-capped value |
+| `raw` | No adjustment — `realized_pnl` passed through as-is |
+
+Accepted on: top traders (`/v2/pnl/leaderboard/top`), wallet overview (`/v2/pnl/wallets/:wallet`), wallet positions, wallet-token position, and all three position batch endpoints. The server also accepts the aliases `pnl_mode` and `mode`.
+
+```typescript
+import type { PnlMode } from '@solana-tracker/data-api';
+
+const mode: PnlMode = 'adjusted';
+const top = await client.getPnlV2TopTraders({ days: 90, pnlMode: mode, limit: 50 });
+// top.pagination.pnlMode → 'adjusted'
+// top.traders[0].pnlAdjustments → { mode, invalidPnl, adjustedCorrection }
+// top.traders[0].period.realizedRaw → gross PnL before filtering
+// top.traders[0].period.days → { profitable, losing, maxSinglePnl, winRate }
+```
+
+#### Unified identity
+
+Every wallet-scoped response now carries an `identity` field (top-level or per-row). It can include multiple tags and pluggable sources (`kol`, `bot`, `pool`, `developer`, `hacker`, `spam_dusting`, `exchange`, platform tags, `arbitrage`, etc.):
+
+```typescript
+import type { PnlV2Identity } from '@solana-tracker/data-api';
+// identity?: { name, twitter, avatar, type, tags, platforms, bot, pool, developer, hacker, spamDusting, exchange }
+```
+
+#### Token-scoped PnL enrichment
+
+Token-scoped endpoints (`/tokens/:token/traders`, `first-buyers`, token batch) return PnL nested as `pnl: { token, wallet }` so each row makes it unambiguous which scope each PnL belongs to. Identity enrichment (pool, developer, platforms) is always on.
+
+```typescript
+const traders = await client.getPnlV2TokenTraders('mint', { limit: 10 });
+// traders.traders[0].pnl.token  → { realized, unrealized, total }
+// traders.traders[0].pnl.wallet → { realized, unrealized, total, invested, proceeds, totalTrades, tokensTraded }
+// traders.traders[0].identity   → pool / developer / platform tags
+```
+
+#### Token holders enrichment
+
+`getTokenHolders` now accepts an optional `enrich` parameter to add identity and/or wallet PnL:
+
+```typescript
+const holders = await client.getTokenHolders('mint', 'all');
+// holders.enrich → ['identity', 'walletPnl']
+// holders.accounts[0].identity → pool / developer tags
+// holders.accounts[0].pnl?.wallet → lifetime wallet PnL
+// holders.accounts[0].pnl?.token  → per-token PnL
+```
+
+#### Quick reference
+
+```typescript
+// Leaderboards
+const kols = await client.getPnlV2KOLLeaderboard({ sort: 'total', direction: 'desc', limit: 20 });
+const kolsPeriod = await client.getPnlV2KOLPeriodLeaderboard({ period: '30d', limit: 20 });
+const cal = await client.getPnlV2KOLCalendar({ year: 2026, month: 4 });
+const day = await client.getPnlV2KOLByDate({ date: '2026-04-01' });
+const top = await client.getPnlV2TopTraders({ days: 90, limit: 50, pnlMode: 'adjusted' });
+
+// Token (enriched with identity + wallet PnL automatically)
+const traders = await client.getPnlV2TokenTraders('tokenMint', { limit: 50, sort: 'pnl', direction: 'desc' });
+const firstBuyers = await client.getPnlV2TokenFirstBuyers('tokenMint', { sort: 'first_trade', direction: 'asc' });
+
+// Wallet (narrow with queued guard when needed)
+const overview = await client.getPnlV2WalletOverview('walletAddress', { pnlMode: 'adjusted' });
+if ('queued' in overview && overview.queued) {
+  console.log(overview.message);
+} else {
+  console.log(overview.summary.roi, overview.identity, overview.pnlMode);
+}
+
+const history = await client.getPnlV2WalletHistory('walletAddress', { period: '30d', limit: 30 });
+const performance = await client.getPnlV2WalletPerformance('walletAddress', { period: '90d' });
+const onePosition = await client.getPnlV2WalletTokenPosition('walletAddress', 'tokenMint', { pnlMode: 'adjusted' });
+const highlights = await client.getPnlV2WalletHighlights('walletAddress');
+const risk = await client.getPnlV2WalletRisk('walletAddress');
+const positions = await client.getPnlV2WalletPositions('walletAddress', { filter: 'holding', limit: 50, pnlMode: 'adjusted' });
+const chart = await client.getPnlV2WalletChart('walletAddress', { time_from: startUnix, time_to: endUnix });
+
+// Wallet status / refresh
+const status = await client.getPnlV2WalletStatus('walletAddress');     // { exists, status, counts, ... } or { exists: false, status: 'not_found' }
+const refresh = await client.refreshPnlV2Wallet('walletAddress');       // 202 Accepted, { queued, message }
+
+// Batch (limits: 100 wallet summaries, 100 tokens per wallet batch, 200 wallets per token batch, 200 pairs)
+await client.batchPnlV2WalletSummaries(['walletA', 'walletB']); // wallet-level summary + identity + raw tags
+await client.batchPnlV2WalletTokenPositions('walletAddress', ['mintA', 'mintB'], { pnlMode: 'adjusted' });
+await client.batchPnlV2TokenWalletPositions('tokenMint', ['walletA', 'walletB'], { pnlMode: 'adjusted' });
+await client.batchPnlV2PositionPairs([{ wallet: 'walletA', token: 'mintA' }], { pnlMode: 'raw' });
+
+// Token holders with enrichment (not PnL v2 — different endpoint)
+const holders = await client.getTokenHolders('tokenMint', 'all');
+```
+
+See [`examples/pnl-v2.ts`](examples/pnl-v2.ts) for runnable snippets.
 
 ### Top Traders Endpoints
 

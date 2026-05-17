@@ -258,7 +258,14 @@ export interface TopHolder {
 
 export interface TokenHoldersResponse {
   total: number;
-  accounts: Holder[];
+  enrich?: string[];
+  accounts: (Holder & {
+    pnl?: {
+      wallet?: PnlV2WalletLifetimePnl;
+      token?: { realized: number | null; unrealized: number | null; total: number | null };
+    };
+    identity?: PnlV2Identity;
+  })[];
 }
 
 export interface AthPrice {
@@ -1003,6 +1010,874 @@ export interface WalletBalanceUpdate {
   wallet: string;
   token: string;
   amount: number;
+}
+
+// ======== PNL V2 TYPES ========
+
+export type PnlMode = 'strict' | 'adjusted' | 'raw';
+
+export interface PnlV2Block {
+  realized: number | null;
+  realizedRaw?: number | null;
+  unrealized: number | null;
+  total: number | null;
+}
+
+export interface PnlV2Pagination {
+  hasMore: boolean;
+  nextCursor: string | null;
+  count: number;
+  total: number;
+  pnlMode?: PnlMode;
+  enrich?: string[];
+}
+
+export interface PnlV2IdentityBot {
+  name: string | null;
+  avatar: string | null;
+}
+
+export interface PnlV2IdentityPool {
+  program: string | null;
+  poolAddress: string | null;
+  tokenA?: string | null;
+  tokenB?: string | null;
+}
+
+export interface PnlV2IdentityDeveloper {
+  token?: string | null;
+  via?: string[];
+  pools?: string[];
+  creationTx?: string | null;
+  createdAt?: number | null;
+  tokens?: string[];
+}
+
+export interface PnlV2IdentityHacker {
+  label: string | null;
+}
+
+export interface PnlV2IdentitySpamDusting {
+  label: string | null;
+}
+
+export interface PnlV2IdentityExchange {
+  name: string | null;
+}
+
+export interface PnlV2Identity {
+  name?: string | null;
+  twitter?: string | null;
+  avatar?: string | null;
+  type?: string | null;
+  tags?: string[];
+  platforms?: string[];
+  bot?: PnlV2IdentityBot;
+  pool?: PnlV2IdentityPool;
+  developer?: PnlV2IdentityDeveloper;
+  hacker?: PnlV2IdentityHacker;
+  spamDusting?: PnlV2IdentitySpamDusting;
+  exchange?: PnlV2IdentityExchange;
+}
+
+export interface PnlV2WalletLifetimePnl {
+  realized: number | null;
+  unrealized: number | null;
+  total: number | null;
+  invested: number | null;
+  proceeds: number | null;
+  totalTrades: number;
+  tokensTraded: number;
+}
+
+export interface PnlV2TokenScopedPnl {
+  token: PnlV2Block;
+  /**
+   * Lifetime wallet PnL summary. Only populated when the underlying response
+   * is enriched with wallet PnL data (always on for `/v2/pnl/tokens/...` endpoints,
+   * opt-in for `/tokens/:token/holders?enrich=walletPnl`).
+   */
+  wallet?: PnlV2WalletLifetimePnl;
+}
+
+export interface PnlV2PnlAdjustments {
+  mode: PnlMode;
+  invalidPnl: number | null;
+  adjustedCorrection: number | null;
+}
+
+export interface PnlV2TokenMeta {
+  symbol: string | null;
+  name: string | null;
+  image?: string;
+  decimals: number | null;
+  price: number | null;
+  snapshotPrice?: number | null;
+  marketCap: number | null;
+  liquidity: number | null;
+  primaryMarket: string | null;
+}
+
+export interface PnlV2WalletQueued {
+  indexed: false;
+  queued: true;
+  message: string;
+}
+
+// -- Leaderboard Types --
+
+export interface PnlV2Trader {
+  wallet: string;
+  pnl: PnlV2Block;
+  invested: number | null;
+  proceeds: number | null;
+  openPositions: {
+    cost: number | null;
+    value: number | null;
+  };
+  counts: {
+    buys: number;
+    sells: number;
+    trades: number;
+    tokensTraded: number;
+    tokensHeldEver: number;
+  };
+  averages: {
+    buy: number | null;
+    sell: number | null;
+  };
+  tokens: {
+    profitable: number;
+    losing: number;
+    closed: number;
+  };
+  winRate: number | null;
+  roi: number | null;
+  timing: {
+    firstTrade: number | null;
+    lastTrade: number | null;
+  };
+  updatedAt: string | null;
+}
+
+export interface PnlV2TraderWithIdentity extends PnlV2Trader {
+  identity: PnlV2Identity | null;
+}
+
+export interface PnlV2PeriodTrader {
+  wallet: string;
+  period: {
+    realized: number | null;
+    volume: number | null;
+    tradingDays: number;
+  };
+  ending: {
+    pnl: PnlV2Block;
+  };
+  lastSnapshotDate: string | null;
+}
+
+export interface PnlV2PeriodTraderWithIdentity extends PnlV2PeriodTrader {
+  identity: PnlV2Identity | null;
+}
+
+export interface PnlV2DayTrader {
+  wallet: string;
+  day: {
+    realized: number | null;
+    volume: number | null;
+    cost: number | null;
+    buys: number;
+    sells: number;
+  };
+  cumulative: {
+    pnl: PnlV2Block;
+    invested: number | null;
+    proceeds: number | null;
+  };
+}
+
+export interface PnlV2DayTraderWithIdentity extends PnlV2DayTrader {
+  identity: PnlV2Identity | null;
+}
+
+export interface PnlV2Top90dTrader {
+  wallet: string;
+  period: {
+    realized: number | null;
+    realizedRaw?: number | null;
+    volume: number | null;
+    tradingDays: number;
+    roi: number | null;
+    days?: {
+      profitable: number;
+      losing: number;
+      maxSinglePnl: number | null;
+      winRate: number | null;
+    };
+  };
+  pnlAdjustments?: PnlV2PnlAdjustments;
+  ending: {
+    pnl: {
+      realized: number | null;
+      total: number | null;
+    };
+  };
+  invested: number | null;
+  proceeds: number | null;
+  counts: {
+    buys: number;
+    sells: number;
+    trades: number;
+    tokensTraded: number;
+  };
+  averages: {
+    buy: number | null;
+    sell: number | null;
+  };
+  tokens: {
+    profitable: number;
+    losing: number;
+    closed: number;
+  };
+  winRate: number | null;
+  timing: {
+    firstTrade: number | null;
+    lastTrade: number | null;
+  };
+  lastSnapshotDate: string | null;
+  updatedAt: string | null;
+  identity?: PnlV2Identity | null;
+}
+
+// -- Token Types --
+
+export interface PnlV2Holder {
+  wallet: string;
+  pnl: PnlV2TokenScopedPnl;
+  identity?: PnlV2Identity | null;
+  position: {
+    balance: number | null;
+    costBasis: number | null;
+    value: number | null;
+    price: number | null;
+  };
+  buyUsd: number | null;
+  sellUsd: number | null;
+  counts: {
+    buys: number;
+    sells: number;
+    total: number;
+  };
+  roi: number | null;
+  timing: {
+    firstTrade: number | null;
+    lastTrade: number | null;
+  };
+}
+
+// -- Wallet Types --
+
+export interface PnlV2Summary {
+  pnl: PnlV2Block;
+  invested: number | null;
+  proceeds: number | null;
+  openPositions: {
+    cost: number | null;
+    value: number | null;
+  };
+  counts: {
+    buys: number;
+    sells: number;
+    trades: number;
+    tokensTraded: number;
+    tokensHeldEver: number;
+  };
+  averages: {
+    buy: number | null;
+    sell: number | null;
+  };
+  roi: number | null;
+  timing: {
+    firstTrade: number | null;
+    lastTrade: number | null;
+  };
+}
+
+export interface PnlV2Position {
+  token: string;
+  pnl: PnlV2Block;
+  invested: number | null;
+  proceeds: number | null;
+  roi: number | null;
+  current: {
+    balance: number | null;
+    costBasis: number | null;
+    value: number | null;
+    price: number | null;
+    avgCost: number | null;
+  };
+  volume: {
+    tokensBought: number | null;
+    tokensSold: number | null;
+    buyUsd: number | null;
+    sellUsd: number | null;
+  };
+  averages: {
+    buy: number | null;
+    sell: number | null;
+  };
+  counts: {
+    buys: number;
+    sells: number;
+    total: number;
+  };
+  timing: {
+    firstBuy: number | null;
+    lastBuy: number | null;
+    firstSell: number | null;
+    lastSell: number | null;
+    firstTrade: number | null;
+    lastTrade: number | null;
+    holdTimeSecs: number | null;
+  };
+  meta?: PnlV2TokenMeta;
+  portfolioPercent?: number | null;
+}
+
+export interface PnlV2PositionWithWallet extends PnlV2Position {
+  wallet: string;
+}
+
+export interface PnlV2Snapshot {
+  date: string;
+  cumulative: {
+    pnl: PnlV2Block;
+    cost: number | null;
+    proceeds: number | null;
+    openPositions: {
+      cost: number | null;
+      value: number | null;
+    };
+    counts: {
+      buys: number;
+      sells: number;
+      tokensTraded: number;
+    };
+  };
+  activity: {
+    pnl: {
+      realized: number | null;
+    };
+    counts: {
+      buys: number;
+      sells: number;
+    };
+    volume: {
+      costUsd: number | null;
+      total: number | null;
+    };
+    averages: {
+      buy: number | null;
+      sell: number | null;
+      realizedPnl: number | null;
+      holdTimeSecs: number | null;
+    };
+  };
+}
+
+export interface PnlV2ChartPoint {
+  date: string;
+  time: number;
+  pnl: {
+    realized: number | null;
+    total: number | null;
+  };
+  invested: number | null;
+  proceeds: number | null;
+  activity: {
+    realizedPnl: number | null;
+    buys: number;
+    sells: number;
+    volume: number | null;
+    avgHoldTimeSecs: number | null;
+  };
+  counts: {
+    buys: number;
+    sells: number;
+    tokensTraded: number;
+  };
+}
+
+// -- Params Interfaces --
+
+export interface PnlV2KOLLeaderboardParams {
+  sort?: 'total' | 'realized' | 'unrealized' | 'invested' | 'proceeds' | 'value' | 'trades' | 'tokens' | 'roi' | 'win_percentage' | 'last_trade';
+  direction?: 'asc' | 'desc';
+  limit?: number;
+  cursor?: string;
+}
+
+export interface PnlV2KOLPeriodParams {
+  sort?: 'realized' | 'volume' | 'days' | 'ending_total';
+  direction?: 'asc' | 'desc';
+  limit?: number;
+  cursor?: string;
+  period?: '1d' | '7d' | '14d' | '30d' | '90d' | 'all';
+  start?: string;
+  end?: string;
+}
+
+export interface PnlV2KOLCalendarParams {
+  year?: number;
+  month?: number;
+}
+
+export interface PnlV2KOLByDateParams {
+  date?: string;
+}
+
+export interface PnlV2TopTradersParams {
+  sort?: 'realized' | 'volume' | 'days' | 'roi' | 'win_percentage' | 'trades' | 'tokens';
+  direction?: 'asc' | 'desc';
+  limit?: number;
+  cursor?: string;
+  platform?: string;
+  excludeArbitrage?: string;
+  pnlMode?: PnlMode;
+  days?: number;
+  minTrades?: number;
+  minInvested?: number;
+  minDays?: number;
+  minWinRate?: number;
+  minRoi?: number;
+  minClosedTokens?: number;
+  maxSingleTokenPct?: number;
+}
+
+export interface PnlV2TokenTradersParams {
+  sort?: 'holding' | 'value' | 'pnl' | 'realized' | 'unrealized' | 'invested' | 'roi' | 'last_trade' | 'first_trade';
+  direction?: 'asc' | 'desc';
+  limit?: number;
+  cursor?: string;
+  platform?: string;
+  excludeArbitrage?: string;
+  excludeZeroBuys?: string;
+  activeOnly?: string;
+  minTrades?: number;
+}
+
+export interface PnlV2TokenFirstBuyersParams {
+  sort?: 'first_trade';
+  direction?: 'asc';
+  limit?: number;
+  cursor?: string;
+  platform?: string;
+  excludeArbitrage?: string;
+  excludeZeroBuys?: string;
+  activeOnly?: string;
+  minTrades?: number;
+}
+
+export interface PnlV2WalletHistoryParams {
+  period?: '1d' | '7d' | '14d' | '30d' | '90d' | 'all';
+  start?: string;
+  end?: string;
+  limit?: number;
+}
+
+export interface PnlV2WalletPerformanceParams {
+  period?: '1d' | '7d' | '14d' | '30d' | '90d' | 'all';
+  days?: number;
+}
+
+export interface PnlV2WalletPositionsParams {
+  sort?: 'last_trade' | 'pnl' | 'realized' | 'unrealized' | 'roi' | 'value' | 'holding' | 'invested' | 'cost' | 'proceeds' | 'buys' | 'sells';
+  direction?: 'asc' | 'desc';
+  cursor?: string;
+  limit?: number;
+  filter?: 'all' | 'holding' | 'active' | 'sold' | 'profitable' | 'losing';
+  period?: '1d' | '7d' | '14d' | '30d' | '90d' | 'all';
+  pnlMode?: PnlMode;
+  tokens?: string;
+  minValue?: number;
+  maxValue?: number;
+  minPnl?: number;
+  maxPnl?: number;
+  minInvested?: number;
+  maxInvested?: number;
+  minRoi?: number;
+  maxRoi?: number;
+  minTrades?: number;
+  minHolding?: number;
+  market?: string;
+  minLiquidity?: number;
+  minMarketCap?: number;
+}
+
+export interface PnlV2WalletChartParams {
+  time_from?: number;
+  time_to?: number;
+}
+
+export interface PnlV2WalletOverviewParams {
+  pnlMode?: PnlMode;
+}
+
+export interface PnlV2WalletTokenPositionParams {
+  pnlMode?: PnlMode;
+}
+
+export interface PnlV2BatchParams {
+  pnlMode?: PnlMode;
+}
+
+// -- Wallet status / refresh types --
+
+export interface PnlV2WalletStatusNotFound {
+  exists: false;
+  status: 'not_found';
+}
+
+export interface PnlV2WalletStatusFound {
+  exists: true;
+  status: string;
+  updatedAt: string | null;
+  timing: {
+    firstTrade: number | null;
+    lastTrade: number | null;
+  };
+  counts: {
+    positions: number;
+    snapshots: number;
+  };
+  latestSnapshotDate: string | null;
+}
+
+export type PnlV2WalletStatusResponse = PnlV2WalletStatusNotFound | PnlV2WalletStatusFound;
+
+export interface PnlV2WalletRefreshResponse {
+  queued: boolean;
+  message: string;
+}
+
+// -- Response Interfaces --
+
+export interface PnlV2KOLLeaderboardResponse {
+  traders: PnlV2TraderWithIdentity[];
+  pagination: PnlV2Pagination;
+}
+
+export interface PnlV2KOLPeriodResponse {
+  traders: PnlV2PeriodTraderWithIdentity[];
+  pagination: PnlV2Pagination;
+}
+
+export interface PnlV2KOLCalendarDayData {
+  realizedPnl: number | null;
+  volume: number | null;
+  buys: number;
+  sells: number;
+  traders: number;
+}
+
+export interface PnlV2KOLCalendarResponse {
+  year: number;
+  month: number;
+  days: { [day: string]: PnlV2KOLCalendarDayData };
+  summary: {
+    tradingDays: number;
+    positiveDays: number;
+    negativeDays: number;
+    totalRealizedPnl: number | null;
+    totalVolume: number | null;
+  };
+}
+
+export interface PnlV2KOLByDateResponse {
+  traders: PnlV2DayTraderWithIdentity[];
+  summary: {
+    totalRealizedPnl: number | null;
+    totalVolume: number | null;
+  };
+  date: string;
+}
+
+export interface PnlV2TopTradersResponse {
+  traders: PnlV2Top90dTrader[];
+  pagination: PnlV2Pagination;
+}
+
+export interface PnlV2TokenTradersResponse {
+  meta: PnlV2TokenMeta;
+  traders: PnlV2Holder[];
+  pagination: PnlV2Pagination;
+}
+
+export interface PnlV2WalletTokenPositionResponse extends PnlV2Position {
+  wallet?: string;
+  identity?: PnlV2Identity | null;
+  pnlMode?: PnlMode;
+}
+
+export interface PnlV2WalletHistoryResponse {
+  wallet?: string;
+  identity?: PnlV2Identity | null;
+  days: PnlV2Snapshot[];
+  summary: {
+    days: {
+      trading: number;
+      positive: number;
+      negative: number;
+      breakEven: number;
+    };
+    totals: {
+      realizedPnl: number | null;
+      volume: number | null;
+    };
+    winRate: number | null;
+    totalDays: number;
+    deltas: {
+      realized: number | null;
+      total: number | null;
+    } | null;
+  };
+}
+
+export interface PnlV2WalletPerformanceDay {
+  date: string;
+  realizedPnl: number | null;
+  unrealizedPnl: number | null;
+  totalPnl: number | null;
+  volume: number | null;
+  trades: number;
+}
+
+export interface PnlV2WalletPerformanceResponse {
+  wallet?: string;
+  identity?: PnlV2Identity | null;
+  window: number;
+  totals: {
+    realizedPnl: number | null;
+    volume: number | null;
+    trades: number;
+  };
+  bestDay: {
+    date: string;
+    realizedPnl: number | null;
+    volume: number | null;
+    totalPnl: number | null;
+    trades: number;
+  } | null;
+  worstDay: {
+    date: string;
+    realizedPnl: number | null;
+    volume: number | null;
+    totalPnl: number | null;
+    trades: number;
+  } | null;
+  streaks: {
+    positive: number | null;
+    negative: number | null;
+    currentPositive: number | null;
+    currentNegative: number | null;
+  };
+  drawdown: {
+    amount: number | null;
+    percent: number | null;
+  };
+  days: PnlV2WalletPerformanceDay[];
+  updatedAt: string | null;
+}
+
+export interface PnlV2WalletHighlightsResponse {
+  wallet?: string;
+  identity?: PnlV2Identity | null;
+  counts: {
+    positions: number;
+    open: number;
+    closed: number;
+  };
+  highlights: {
+    biggestWinner: PnlV2Position | null;
+    biggestLoser: PnlV2Position | null;
+    biggestBag: PnlV2Position | null;
+    mostProfitableClosed: PnlV2Position | null;
+    fastestFlip: PnlV2Position | null;
+    longestHold: PnlV2Position | null;
+    mostActive: PnlV2Position | null;
+  };
+  updatedAt: string | null;
+}
+
+export interface PnlV2WalletRiskResponse {
+  wallet?: string;
+  identity?: PnlV2Identity | null;
+  openPositions: {
+    count: number;
+    cost: number | null;
+    value: number | null;
+    profitableValue: number | null;
+    profitableValuePercent: number | null;
+  };
+  concentration: {
+    top1Percent: number | null;
+    top5Percent: number | null;
+    score: number | null;
+  };
+  pnlMix: {
+    realized: number | null;
+    unrealized: number | null;
+    realizedPercent: number | null;
+    unrealizedPercent: number | null;
+  };
+  largestPositions: PnlV2Position[];
+  updatedAt: string | null;
+}
+
+export interface PnlV2WalletPositionsResponse {
+  wallet?: string;
+  identity?: PnlV2Identity | null;
+  positions: PnlV2Position[];
+  stats: {
+    total: number;
+    filtered: number;
+    holding: number;
+    sold: number;
+    profitable: number;
+    losing: number;
+  };
+  pagination: PnlV2Pagination;
+}
+
+export interface PnlV2WalletChartResponse {
+  wallet?: string;
+  identity?: PnlV2Identity | null;
+  points: PnlV2ChartPoint[];
+  summary: {
+    days: {
+      trading: number;
+      positive: number;
+      negative: number;
+      breakEven: number;
+    };
+    totals: {
+      realizedPnl: number | null;
+      volume: number | null;
+    };
+    winRate: number | null;
+    bestDay: { date: string; realizedPnl: number | null } | null;
+    worstDay: { date: string; realizedPnl: number | null } | null;
+    streaks: {
+      positive: number;
+      negative: number;
+      currentPositive: number;
+      currentNegative: number;
+    };
+    drawdown: {
+      amount: number | null;
+      percent: number | null;
+    };
+    averages: {
+      dailyVolume: number | null;
+      dailyRealizedPnl: number | null;
+      holdTimeSecs: number | null;
+    };
+  };
+  pagination: {
+    count: number;
+    hasMore: boolean;
+    nextTimeTo: number | null;
+  };
+}
+
+export interface PnlV2WalletOverviewResponse {
+  wallet?: string;
+  identity?: PnlV2Identity | null;
+  pnlMode?: PnlMode;
+  summary: PnlV2Summary;
+  analysis: {
+    winRate: number | null;
+    avgPnlPerAsset: number | null;
+    avgBuyValue: number | null;
+    tokens: {
+      closed: number;
+      winning: number;
+      losing: number;
+    };
+    distribution: Array<{
+      range: string;
+      count: number;
+      rate: number | null;
+    }>;
+  };
+  stats: {
+    total: number;
+    holding: number;
+    sold: number;
+    profitable: number;
+    losing: number;
+  };
+  tags: {
+    isArbitrage: boolean;
+    platforms: string[];
+  };
+  updatedAt: string | null;
+}
+
+export interface PnlV2BatchWalletPositionsResponse {
+  wallet: string;
+  identity?: PnlV2Identity | null;
+  pnlMode?: PnlMode;
+  count: number;
+  positions: PnlV2Position[];
+  notFound: string[];
+  invalid?: string[];
+}
+
+export interface PnlV2BatchWalletSummary {
+  wallet: string;
+  identity?: PnlV2Identity | null;
+  summary: PnlV2Summary;
+  tags: {
+    isArbitrage: boolean;
+    platforms: string[];
+  };
+  updatedAt: string | number | null;
+}
+
+export interface PnlV2BatchWalletSummariesResponse {
+  count: number;
+  wallets: PnlV2BatchWalletSummary[];
+  notFound?: string[];
+  invalid?: string[];
+  truncated?: {
+    requested: number;
+    limit: number;
+  };
+}
+
+export interface PnlV2TokenScopedPositionWithWallet extends Omit<PnlV2Position, 'pnl'> {
+  wallet: string;
+  identity?: PnlV2Identity | null;
+  pnl: PnlV2TokenScopedPnl;
+}
+
+export interface PnlV2BatchTokenPositionsResponse {
+  token: string;
+  pnlMode?: PnlMode;
+  count: number;
+  positions: PnlV2TokenScopedPositionWithWallet[];
+  notFound: string[];
+  invalid?: string[];
+}
+
+export interface PnlV2BatchPositionPairsResponse {
+  pnlMode?: PnlMode;
+  count: number;
+  positions: (PnlV2PositionWithWallet & { identity?: PnlV2Identity | null })[];
+  notFound: Array<{ wallet: string; token: string }>;
+  invalid?: Array<{ wallet?: string; token?: string }>;
 }
 
 export interface ChartDataParams {
