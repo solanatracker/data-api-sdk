@@ -256,15 +256,66 @@ export interface TopHolder {
   value: TokenValuePair;
 }
 
+/**
+ * Flat per-token PnL returned in `/tokens/:tokenAddress/holders?enrich=walletPnl`.
+ *
+ * Distinct from the nested `PnlV2Position` shape: holder enrichment uses flat
+ * field names (`buys`/`sells`, `totalBought`/`totalSold`, `avgBuy`/`avgSell`)
+ * for backwards compatibility.
+ */
+export interface EnrichedTokenPnl {
+  realized: number | null;
+  unrealized: number | null;
+  total: number | null;
+  invested: number | null;
+  proceeds: number | null;
+  buys: number;
+  sells: number;
+  totalTrades: number;
+  roi: number | null;
+  /** Current token balance (native units). */
+  balance: number | null;
+  /** Cost basis of remaining held tokens (USD). */
+  costBasis: number | null;
+  /** Current USD value of held tokens. */
+  value: number | null;
+  /** Current token price (USD). */
+  price: number | null;
+  /** Total tokens purchased (native units). */
+  totalBought: number | null;
+  /** Total tokens sold (native units). */
+  totalSold: number | null;
+  /** Average buy size (USD). */
+  avgBuy: number | null;
+  /** Average sell size (USD). */
+  avgSell: number | null;
+  /** Average cost per token (USD). */
+  avgCost?: number | null;
+  /** Unix ms. */
+  firstBuy: number | null;
+  /** Unix ms. */
+  lastBuy: number | null;
+  /** Unix ms. */
+  firstSell: number | null;
+  /** Unix ms. */
+  lastSell: number | null;
+  /** Unix ms. */
+  firstTrade: number | null;
+  /** Unix ms. */
+  lastTrade: number | null;
+  /** Hold duration in seconds. */
+  holdTimeSecs: number | null;
+}
+
 export interface TokenHoldersResponse {
   total: number;
   enrich?: string[];
   accounts: (Holder & {
     pnl?: {
       wallet?: PnlV2WalletLifetimePnl;
-      token?: { realized: number | null; unrealized: number | null; total: number | null };
+      token?: EnrichedTokenPnl;
     };
-    identity?: PnlV2Identity;
+    identity?: PnlV2Identity | null;
   })[];
 }
 
@@ -1256,13 +1307,16 @@ export interface PnlV2Holder {
   wallet: string;
   pnl: PnlV2TokenScopedPnl;
   identity?: PnlV2Identity | null;
+  /** Legacy current-position snapshot. Same values as `current` (kept for compatibility). */
   position: {
     balance: number | null;
     costBasis: number | null;
     value: number | null;
     price: number | null;
   };
+  /** Legacy. Same as `volume.buyUsd` / `invested`. */
   buyUsd: number | null;
+  /** Legacy. Same as `volume.sellUsd` / `proceeds`. */
   sellUsd: number | null;
   counts: {
     buys: number;
@@ -1270,9 +1324,36 @@ export interface PnlV2Holder {
     total: number;
   };
   roi: number | null;
+  /** Total cost basis (USD spent buying). */
+  invested: number | null;
+  /** Total USD received from selling. */
+  proceeds: number | null;
+  volume: {
+    tokensBought: number | null;
+    tokensSold: number | null;
+    buyUsd: number | null;
+    sellUsd: number | null;
+  };
+  averages: {
+    buy: number | null;
+    sell: number | null;
+  };
+  current: {
+    balance: number | null;
+    costBasis: number | null;
+    value: number | null;
+    price: number | null;
+    avgCost: number | null;
+  };
+  /** Trade timing. All values are unix ms except `holdTimeSecs` (seconds). */
   timing: {
     firstTrade: number | null;
     lastTrade: number | null;
+    firstBuy: number | null;
+    lastBuy: number | null;
+    firstSell: number | null;
+    lastSell: number | null;
+    holdTimeSecs: number | null;
   };
 }
 
@@ -1301,6 +1382,8 @@ export interface PnlV2Summary {
   timing: {
     firstTrade: number | null;
     lastTrade: number | null;
+    /** Average hold time in seconds across all positions with a first buy. */
+    avgHoldTimeSecs?: number | null;
   };
 }
 
@@ -1530,35 +1613,6 @@ export interface PnlV2WalletTokenPositionParams {
 
 export interface PnlV2BatchParams {
   pnlMode?: PnlMode;
-}
-
-// -- Wallet status / refresh types --
-
-export interface PnlV2WalletStatusNotFound {
-  exists: false;
-  status: 'not_found';
-}
-
-export interface PnlV2WalletStatusFound {
-  exists: true;
-  status: string;
-  updatedAt: string | null;
-  timing: {
-    firstTrade: number | null;
-    lastTrade: number | null;
-  };
-  counts: {
-    positions: number;
-    snapshots: number;
-  };
-  latestSnapshotDate: string | null;
-}
-
-export type PnlV2WalletStatusResponse = PnlV2WalletStatusNotFound | PnlV2WalletStatusFound;
-
-export interface PnlV2WalletRefreshResponse {
-  queued: boolean;
-  message: string;
 }
 
 // -- Response Interfaces --
@@ -1926,3 +1980,344 @@ export interface PaginatedTokenHoldersResponse {
   hasMore: boolean;
   limit: number;
 }
+
+// ============================================================================
+// Jupiter DCA (Recurring Orders)
+// ============================================================================
+
+/** Status of a single DCA order. */
+export type DcaOrderStatus = 'active' | 'paused' | 'completed' | 'pending';
+
+/** Status filter accepted by DCA list endpoints (adds `'all'`). */
+export type DcaOrderStatusFilter = DcaOrderStatus | 'all';
+
+/** Trade direction relative to the wallet across its DCA orders. */
+export type DcaDirection = 'buying' | 'selling' | 'mixed';
+
+/** Sort field accepted by DCA list endpoints. */
+export type DcaSort =
+  | 'volume'
+  | 'deposited'
+  | 'remaining'
+  | 'progress'
+  | 'recent'
+  | 'created'
+  | 'status';
+
+/** A supported DCA program. */
+export interface DcaProgram {
+  id: string;
+  label: string;
+  programId: string;
+}
+
+export interface DcaProgramsResponse {
+  programs: DcaProgram[];
+}
+
+/** Token metadata embedded on a DCA order. */
+export interface DcaToken {
+  mint: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  image?: string | null;
+  uri?: string | null;
+  description?: string | null;
+  twitter?: string | null;
+  website?: string | null;
+  hasFileMetaData?: boolean;
+  /** Current USD price; null/omitted when unavailable. */
+  priceUsd?: number | null;
+}
+
+/** Raw on-chain amounts (strings, base units). Keys depend on program. */
+export type DcaOrderRaw = Record<string, string>;
+
+/** A single DCA (recurring) order. */
+export interface DcaOrder {
+  program: string;
+  programId: string;
+  /** DCA account pubkey. */
+  address: string;
+  owner: string;
+  status: DcaOrderStatus;
+  direction: DcaDirection;
+  /** Human readable pair, e.g. "USDC → SOL". */
+  pair: string;
+  input: DcaToken;
+  output: DcaToken;
+  deposited: number;
+  depositedUsd?: number | null;
+  used: number;
+  usedUsd?: number | null;
+  remaining: number;
+  remainingUsd?: number | null;
+  received: number;
+  receivedUsd?: number | null;
+  perCycle: number;
+  perCycleUsd?: number | null;
+  /** Cycle frequency, e.g. "1h". */
+  frequency: string;
+  progressPercent: number;
+  volume: number;
+  volumeUsd?: number | null;
+  /** ISO 8601 timestamp. */
+  createdAt: string;
+  /** ISO 8601 timestamp; null when no further cycle is scheduled. */
+  nextCycleAt: string | null;
+  raw: DcaOrderRaw;
+}
+
+/** Status counts for a wallet's DCA orders. */
+export interface DcaSummary {
+  total: number;
+  active: number;
+  paused: number;
+  completed: number;
+  pending: number;
+}
+
+/** Pagination block returned by paginated DCA endpoints. */
+export interface DcaPagination {
+  limit: number;
+  /** Cursor to pass as `cursor` for the next page; null when no more results. */
+  nextCursor: string | null;
+  hasMore: boolean;
+  count: number;
+  total: number;
+}
+
+/** Common query parameters for DCA list endpoints. */
+export interface DcaListParams {
+  /** DCA program id (default `"jupiter"`). */
+  program?: string;
+  /** Alias for `program`. */
+  dex?: string;
+  /** Alias for `program`. */
+  platform?: string;
+  /**
+   * Page size. Defaults differ by endpoint:
+   * - wallet / wallet orders / pair: default `50`, max `100`
+   * - token buyers / sellers / users: default `200`, max `1000`
+   */
+  limit?: number;
+  /** Opaque cursor (the previous page's last order `address`). */
+  cursor?: string;
+  sort?: DcaSort;
+  /** Alias for `sort`. */
+  sortBy?: DcaSort;
+  status?: DcaOrderStatusFilter;
+}
+
+/** Query parameters accepted by single-order/program endpoints. */
+export interface DcaProgramParams {
+  /** DCA program id (default `"jupiter"`). */
+  program?: string;
+  /** Alias for `program`. */
+  dex?: string;
+  /** Alias for `program`. */
+  platform?: string;
+}
+
+/** Standard error envelope returned by DCA endpoints on failure. */
+export interface DcaErrorResponse {
+  error: {
+    code:
+      | 'INVALID_WALLET'
+      | 'INVALID_MINT'
+      | 'INVALID_ORDER'
+      | 'NOT_FOUND'
+      | 'INVALID_SORT'
+      | 'INVALID_STATUS'
+      | 'INVALID_LIMIT'
+      | 'INVALID_PROGRAM'
+      | 'PROGRAM_PARAM_CONFLICT'
+      | 'INVALID_CURSOR'
+      | 'TIMEOUT'
+      | 'SERVER_ERROR';
+    message: string;
+  };
+}
+
+export interface DcaWalletResponse {
+  wallet: string;
+  summary: DcaSummary;
+  orders: DcaOrder[];
+  pagination: DcaPagination;
+}
+
+export interface DcaOrdersListResponse {
+  orders: DcaOrder[];
+  pagination: DcaPagination;
+}
+
+export interface DcaTokenFlowResponse {
+  mint: string;
+  buyers: { count: number; volumeUsd: number | null };
+  sellers: { count: number; volumeUsd: number | null };
+}
+
+export interface DcaTokenOrdersResponse {
+  mint: string;
+  orders: DcaOrder[];
+  pagination: DcaPagination;
+}
+
+export interface DcaTokenUser {
+  wallet: string;
+  orderCount: number;
+  volumeUsd: number | null;
+}
+
+export interface DcaTokenUsersResponse {
+  mint: string;
+  users: DcaTokenUser[];
+}
+
+export interface DcaPairResponse {
+  inputMint: string;
+  outputMint: string;
+  pair: string;
+  orders: DcaOrder[];
+  pagination: DcaPagination;
+}
+
+// --- DCA Datastream events ---
+
+/** Map of mint address → USD price at event time. */
+export type DcaPricesMap = Record<string, number>;
+
+/**
+ * Order snapshot embedded on a DCA stream event.
+ *
+ * Position events carry the full {@link DcaOrder} shape; transaction events
+ * (Filled, Deposit, etc.) often include only a subset of fields, so all
+ * properties are typed as optional.
+ */
+export type DcaOrderSnapshot = Partial<DcaOrder>;
+
+interface DcaEventBase {
+  program: string;
+  programId: string;
+  /** DCA account address. */
+  address: string;
+  owner: string;
+  signature: string;
+  slot: number;
+  /** Unix ms. */
+  timestamp: number;
+  eventIndex: number;
+  dcaKey: string;
+  /** Snapshot of the order at event time. */
+  order: DcaOrderSnapshot;
+}
+
+export interface DcaOpenedEvent extends DcaEventBase {
+  eventName: 'Opened';
+  openInstruction: 'openDca' | 'openDcaV2';
+  userKey: string;
+  inputMint: string;
+  outputMint: string;
+  /** Raw deposited amount as base-units string. */
+  inDeposited: string;
+  /** Cycle frequency in seconds, as string. */
+  cycleFrequency: string;
+  /** Raw amount per cycle as base-units string. */
+  inAmountPerCycle: string;
+  /** Created at as unix seconds string. */
+  createdAt: string;
+  usd: {
+    inDepositedUsd?: number;
+    inAmountPerCycleUsd?: number;
+  };
+  prices: DcaPricesMap;
+}
+
+export interface DcaFilledEvent extends DcaEventBase {
+  eventName: 'Filled';
+  userKey: string;
+  inputMint: string;
+  outputMint: string;
+  inAmount: string;
+  outAmount: string;
+  feeMint: string;
+  fee: string;
+  fillInstruction: string;
+  usd: {
+    inAmountUsd?: number;
+    outAmountUsd?: number;
+    feeUsd?: number;
+  };
+  prices: DcaPricesMap;
+}
+
+export interface DcaClosedEvent extends DcaEventBase {
+  eventName: 'Closed';
+  userKey: string;
+  inputMint: string;
+  outputMint: string;
+  inDeposited: string;
+  totalInWithdrawn: string;
+  totalOutWithdrawn: string;
+  unfilledAmount: string;
+  userClosed: boolean;
+  usd: {
+    totalInWithdrawnUsd?: number;
+    totalOutWithdrawnUsd?: number;
+    unfilledAmountUsd?: number;
+  };
+  prices: DcaPricesMap;
+}
+
+export interface DcaDepositEvent extends DcaEventBase {
+  eventName: 'Deposit';
+  amount: string;
+  usd: { amountUsd?: number };
+}
+
+export interface DcaWithdrawEvent extends DcaEventBase {
+  eventName: 'Withdraw';
+  inAmount: string;
+  outAmount: string;
+  userWithdraw: boolean;
+  usd: { inAmountUsd?: number; outAmountUsd?: number };
+}
+
+export interface DcaCollectedFeeEvent extends DcaEventBase {
+  eventName: 'CollectedFee';
+  userKey: string;
+  mint: string;
+  amount: string;
+  usd: { amountUsd?: number };
+  prices: DcaPricesMap;
+}
+
+/** DCA account snapshot. No transaction signature; throttled per account. */
+export interface DcaPositionEvent {
+  program: string;
+  programId: string;
+  /** DCA account pubkey (alias of `address`). */
+  pubkey: string;
+  address: string;
+  owner: string;
+  slot: number;
+  /** Unix ms. */
+  timestamp: number;
+  /** Account write version. */
+  writeVersion: number;
+  order: DcaOrder;
+}
+
+/** Discriminated union over all DCA stream events. */
+export type DcaStreamEvent =
+  | DcaOpenedEvent
+  | DcaFilledEvent
+  | DcaClosedEvent
+  | DcaDepositEvent
+  | DcaWithdrawEvent
+  | DcaCollectedFeeEvent
+  | DcaPositionEvent;
+
+/** Transaction events (everything except the position snapshot). */
+export type DcaTransactionEvent = Exclude<DcaStreamEvent, DcaPositionEvent>;

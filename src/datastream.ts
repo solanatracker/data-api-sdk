@@ -7,7 +7,15 @@ import {
   TokenRisk,
   WalletBalanceUpdate,
   TokenStats,
-  TokenStatsTotal
+  TokenStatsTotal,
+  DcaStreamEvent,
+  DcaOpenedEvent,
+  DcaFilledEvent,
+  DcaClosedEvent,
+  DcaDepositEvent,
+  DcaWithdrawEvent,
+  DcaCollectedFeeEvent,
+  DcaPositionEvent,
 } from './interfaces';
 
 /**
@@ -44,6 +52,15 @@ export enum DatastreamRoom {
   // PnL
   PNL_WALLET = 'pnl',
   PNL_WALLET_SUMMARY = 'pnl:summary',
+  // Jupiter DCA
+  DCA_JUPITER = 'dca:jupiter',
+  DCA_JUPITER_OPENED = 'dca:jupiter:opened',
+  DCA_JUPITER_FILLED = 'dca:jupiter:filled',
+  DCA_JUPITER_CLOSED = 'dca:jupiter:closed',
+  DCA_JUPITER_DEPOSIT = 'dca:jupiter:deposit',
+  DCA_JUPITER_WITHDRAW = 'dca:jupiter:withdraw',
+  DCA_JUPITER_COLLECTED_FEE = 'dca:jupiter:collected_fee',
+  DCA_JUPITER_POSITION = 'dca:jupiter:position',
 }
 
 /**
@@ -180,6 +197,7 @@ class SubscriptionMethods {
   public stats: StatsSubscriptions;
   public volume: VolumeSubscriptions;
   public pnl: PnlSubscriptions;
+  public dca: DcaSubscriptions;
 
   constructor(datastream: Datastream) {
     this.ds = datastream;
@@ -188,6 +206,7 @@ class SubscriptionMethods {
     this.stats = new StatsSubscriptions(datastream);
     this.volume = new VolumeSubscriptions(datastream);
     this.pnl = new PnlSubscriptions(datastream);
+    this.dca = new DcaSubscriptions(datastream);
   }
 
   /**
@@ -497,6 +516,86 @@ class PnlSubscriptions {
    */
   summary(walletAddress: string): SubscribeResponse<PnlWalletUpdate> {
     return this.ds._subscribe<PnlWalletUpdate>(`pnl:${walletAddress}:summary`);
+  }
+}
+
+/**
+ * Jupiter DCA (recurring orders) subscription methods.
+ *
+ * Each DCA event is delivered to the global room (`dca:jupiter`), the matching
+ * event-type room (e.g. `dca:jupiter:filled`), and any scoped rooms that apply
+ * (token buyers/sellers, wallet, or specific DCA address).
+ */
+class DcaSubscriptions {
+  private ds: Datastream;
+
+  constructor(datastream: Datastream) {
+    this.ds = datastream;
+  }
+
+  /** All Jupiter DCA events (transactions and position snapshots). */
+  all(): SubscribeResponse<DcaStreamEvent> {
+    return this.ds._subscribe<DcaStreamEvent>('dca:jupiter');
+  }
+
+  /** New DCA opened events. */
+  opened(): SubscribeResponse<DcaOpenedEvent> {
+    return this.ds._subscribe<DcaOpenedEvent>('dca:jupiter:opened');
+  }
+
+  /** Cycle fill events. */
+  filled(): SubscribeResponse<DcaFilledEvent> {
+    return this.ds._subscribe<DcaFilledEvent>('dca:jupiter:filled');
+  }
+
+  /** DCA closed events. */
+  closed(): SubscribeResponse<DcaClosedEvent> {
+    return this.ds._subscribe<DcaClosedEvent>('dca:jupiter:closed');
+  }
+
+  /** Deposit events. */
+  deposit(): SubscribeResponse<DcaDepositEvent> {
+    return this.ds._subscribe<DcaDepositEvent>('dca:jupiter:deposit');
+  }
+
+  /** Withdraw events. */
+  withdraw(): SubscribeResponse<DcaWithdrawEvent> {
+    return this.ds._subscribe<DcaWithdrawEvent>('dca:jupiter:withdraw');
+  }
+
+  /** Fee collection events. */
+  collectedFee(): SubscribeResponse<DcaCollectedFeeEvent> {
+    return this.ds._subscribe<DcaCollectedFeeEvent>('dca:jupiter:collected_fee');
+  }
+
+  /** Live DCA account snapshots (no transaction signature). */
+  position(): SubscribeResponse<DcaPositionEvent> {
+    return this.ds._subscribe<DcaPositionEvent>('dca:jupiter:position');
+  }
+
+  /**
+   * All DCA events for a given token (input or output).
+   * Returns helpers `.buyers()` and `.sellers()` to scope to direction.
+   */
+  token(mint: string): {
+    buyers(): SubscribeResponse<DcaStreamEvent>;
+    sellers(): SubscribeResponse<DcaStreamEvent>;
+  } {
+    const ds = this.ds;
+    return {
+      buyers: () => ds._subscribe<DcaStreamEvent>(`dca:jupiter:${mint}:buyers`),
+      sellers: () => ds._subscribe<DcaStreamEvent>(`dca:jupiter:${mint}:sellers`),
+    };
+  }
+
+  /** All DCA events for a wallet owner. */
+  wallet(walletAddress: string): SubscribeResponse<DcaStreamEvent> {
+    return this.ds._subscribe<DcaStreamEvent>(`dca:jupiter:wallet:${walletAddress}`);
+  }
+
+  /** All DCA events for a specific DCA account address. */
+  order(dcaAddress: string): SubscribeResponse<DcaStreamEvent> {
+    return this.ds._subscribe<DcaStreamEvent>(`dca:jupiter:${dcaAddress}`);
   }
 }
 

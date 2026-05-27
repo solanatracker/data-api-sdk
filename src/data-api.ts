@@ -55,8 +55,6 @@ import {
   PnlV2WalletTokenPositionResponse,
   PnlV2WalletHighlightsResponse,
   PnlV2WalletRiskResponse,
-  PnlV2WalletStatusResponse,
-  PnlV2WalletRefreshResponse,
   PnlV2WalletPositionsParams,
   PnlV2WalletPositionsResponse,
   PnlV2WalletChartParams,
@@ -70,6 +68,16 @@ import {
   PnlV2BatchPositionPairsResponse,
   PnlV2BatchParams,
   PnlV2WalletQueued,
+  DcaListParams,
+  DcaProgramParams,
+  DcaProgramsResponse,
+  DcaWalletResponse,
+  DcaOrdersListResponse,
+  DcaOrder,
+  DcaTokenFlowResponse,
+  DcaTokenOrdersResponse,
+  DcaTokenUsersResponse,
+  DcaPairResponse,
 } from './interfaces';
 
 import { decodeBinaryEvents } from './event-processor';
@@ -1469,18 +1477,6 @@ export class Client {
     return this.request<PnlV2WalletHighlightsResponse | PnlV2WalletQueued>(`/v2/pnl/wallets/${wallet}/highlights`);
   }
 
-  async getPnlV2WalletStatus(wallet: string): Promise<PnlV2WalletStatusResponse> {
-    this.validatePublicKey(wallet, 'wallet');
-    return this.request<PnlV2WalletStatusResponse>(`/v2/pnl/wallets/${wallet}/status`);
-  }
-
-  async refreshPnlV2Wallet(wallet: string): Promise<PnlV2WalletRefreshResponse> {
-    this.validatePublicKey(wallet, 'wallet');
-    return this.request<PnlV2WalletRefreshResponse>(`/v2/pnl/wallets/${wallet}/refresh`, {
-      method: 'POST',
-    });
-  }
-
   async getPnlV2WalletRisk(wallet: string): Promise<PnlV2WalletRiskResponse | PnlV2WalletQueued> {
     this.validatePublicKey(wallet, 'wallet');
     return this.request<PnlV2WalletRiskResponse | PnlV2WalletQueued>(`/v2/pnl/wallets/${wallet}/risk`);
@@ -1551,5 +1547,82 @@ export class Client {
       method: 'POST',
       body: JSON.stringify({ pairs }),
     });
+  }
+
+  // ==========================================================================
+  // Jupiter DCA (Recurring Orders)
+  // ==========================================================================
+
+  /** List supported DCA programs (currently `jupiter`). */
+  async getDcaPrograms(): Promise<DcaProgramsResponse> {
+    return this.request<DcaProgramsResponse>('/dca/programs');
+  }
+
+  /**
+   * Get a wallet's DCA orders with status counts and pagination.
+   * @param wallet Wallet pubkey
+   * @param params Optional `program`, `limit`, `cursor`, `sort`, `status`
+   */
+  async getDcaWallet(wallet: string, params?: DcaListParams): Promise<DcaWalletResponse> {
+    this.validatePublicKey(wallet, 'wallet');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<DcaWalletResponse>(`/dca/wallet/${wallet}${qs}`);
+  }
+
+  /** Paginated DCA orders for a wallet (no status summary). */
+  async getDcaWalletOrders(wallet: string, params?: DcaListParams): Promise<DcaOrdersListResponse> {
+    this.validatePublicKey(wallet, 'wallet');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<DcaOrdersListResponse>(`/dca/wallet/${wallet}/orders${qs}`);
+  }
+
+  /** Fetch a single DCA order by its account pubkey. */
+  async getDcaOrder(address: string, params?: DcaProgramParams): Promise<DcaOrder> {
+    this.validatePublicKey(address, 'address');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<DcaOrder>(`/dca/order/${address}${qs}`);
+  }
+
+  /** Aggregate buyer/seller flow on a token across DCA orders. */
+  async getDcaTokenFlow(mint: string, params?: DcaListParams): Promise<DcaTokenFlowResponse> {
+    this.validatePublicKey(mint, 'mint');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<DcaTokenFlowResponse>(`/dca/token/${mint}${qs}`);
+  }
+
+  /** DCA orders buying this token (token is the output mint). */
+  async getDcaTokenBuyers(mint: string, params?: DcaListParams): Promise<DcaTokenOrdersResponse> {
+    this.validatePublicKey(mint, 'mint');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<DcaTokenOrdersResponse>(`/dca/token/${mint}/buyers${qs}`);
+  }
+
+  /** DCA orders selling this token (token is the input mint). */
+  async getDcaTokenSellers(mint: string, params?: DcaListParams): Promise<DcaTokenOrdersResponse> {
+    this.validatePublicKey(mint, 'mint');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<DcaTokenOrdersResponse>(`/dca/token/${mint}/sellers${qs}`);
+  }
+
+  /** Top wallets by DCA activity on a token. */
+  async getDcaTokenUsers(
+    mint: string,
+    params?: { program?: string; limit?: number },
+  ): Promise<DcaTokenUsersResponse> {
+    this.validatePublicKey(mint, 'mint');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<DcaTokenUsersResponse>(`/dca/token/${mint}/users${qs}`);
+  }
+
+  /** DCA orders for a specific input → output trading pair. */
+  async getDcaPair(
+    inputMint: string,
+    outputMint: string,
+    params?: DcaListParams,
+  ): Promise<DcaPairResponse> {
+    this.validatePublicKey(inputMint, 'inputMint');
+    this.validatePublicKey(outputMint, 'outputMint');
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<DcaPairResponse>(`/dca/pair/${inputMint}/${outputMint}${qs}`);
   }
 }

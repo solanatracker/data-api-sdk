@@ -569,52 +569,14 @@ export async function exampleBatchPositionPairs(
 }
 
 // ---------------------------------------------------------------------------
-// 20. getPnlV2WalletStatus — GET /v2/pnl/wallets/{wallet}/status
-// ---------------------------------------------------------------------------
-export async function exampleWalletStatus(walletAddress: string = WALLET) {
-  try {
-    const res = await client.getPnlV2WalletStatus(walletAddress);
-
-    console.log('\n=== 20. Wallet status ===');
-    if (!res.exists) {
-      console.log(`Wallet ${truncateAddress(walletAddress)} not found / not indexed yet`);
-      return res;
-    }
-    console.log(`Status: ${res.status} | Updated: ${res.updatedAt}`);
-    console.log(`Positions: ${res.counts.positions} | Snapshots: ${res.counts.snapshots}`);
-    console.log(`Latest snapshot: ${res.latestSnapshotDate}`);
-    if (res.timing.firstTrade) {
-      console.log(`First trade: ${new Date(res.timing.firstTrade).toLocaleString()}`);
-    }
-    if (res.timing.lastTrade) {
-      console.log(`Last trade: ${new Date(res.timing.lastTrade).toLocaleString()}`);
-    }
-    return res;
-  } catch (e) { handleError(e); return null; }
-}
-
-// ---------------------------------------------------------------------------
-// 21. refreshPnlV2Wallet — POST /v2/pnl/wallets/{wallet}/refresh
-// ---------------------------------------------------------------------------
-export async function exampleWalletRefresh(walletAddress: string = WALLET) {
-  try {
-    const res = await client.refreshPnlV2Wallet(walletAddress);
-
-    console.log('\n=== 21. Wallet refresh ===');
-    console.log(`Queued: ${res.queued} | Message: ${res.message}`);
-    return res;
-  } catch (e) { handleError(e); return null; }
-}
-
-// ---------------------------------------------------------------------------
-// 22. getTokenHolders with enrichment — GET /tokens/{token}/holders?enrich=all
+// 20. getTokenHolders with enrichment — GET /tokens/{token}/holders?enrich=all
 //     (Not a PnL v2 endpoint, but enrichment is new)
 // ---------------------------------------------------------------------------
 export async function exampleEnrichedTokenHolders(tokenAddress: string = TOKEN) {
   try {
     const data = await client.getTokenHolders(tokenAddress, 'all');
 
-    console.log('\n=== 22. Token holders with enrichment ===');
+    console.log('\n=== 20. Token holders with enrichment ===');
     console.log(`Total holders: ${data.total} | Enrichment: ${data.enrich?.join(', ')}`);
     data.accounts.forEach((h, i) => {
       console.log(

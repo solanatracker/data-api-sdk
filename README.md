@@ -7,7 +7,8 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 ## Features (Summary)
 
 - Full TypeScript support with detailed interfaces for all API responses
-- **PnL v2**: REST endpoints under `/v2/pnl` (leaderboards, token traders, wallet analytics, wallet-summary batch, batch positions) and Datastream rooms `pnl:{wallet}`, `pnl:{wallet}:{token}`, `pnl:{wallet}:summary` — scoped to meme / tradable tokens, not SOL. Includes `pnlMode` (strict/adjusted/raw), unified wallet identity (KOL, bot, pool, developer, hacker, spam-dusting, exchange, platform tags), always-on token enrichment, and opt-in holder enrichment
+- **PnL v2**: REST endpoints under `/v2/pnl` (leaderboards, token traders, wallet analytics, wallet-summary batch, batch positions) and Datastream rooms `pnl:{wallet}`, `pnl:{wallet}:{token}`, `pnl:{wallet}:summary` — scoped to meme / tradable tokens, not SOL. Includes `pnlMode` (strict/adjusted/raw), unified wallet identity (KOL, bot, pool, developer, hacker, spam-dusting, exchange, platform tags), always-on token enrichment, opt-in holder enrichment, full position rows on `wallet/positions` and `tokens/:mint/traders`, and `summary.timing.avgHoldTimeSecs` on the wallet overview
+- **Jupiter DCA**: REST endpoints under `/dca/*` (programs, wallet orders, single order, token flow/buyers/sellers/users, trading pair) and Datastream rooms `dca:jupiter[:event][:scope]` for opened, filled, closed, deposit, withdraw, collected_fee, and live position snapshots — scoped per token, wallet, or DCA account
 - Comprehensive coverage of all Solana Tracker Data API endpoints
 - Real-time data streaming via WebSocket (Datastream)
 - Built-in error handling with specific error types
@@ -84,6 +85,8 @@ Runnable samples live in the [`examples/`](examples/) folder. Copy a file, set y
 | [`examples/profit-loss.ts`](examples/profit-loss.ts) | **Legacy** PnL endpoints (`getWalletPnL`, `getTokenPnL`, first buyers, top traders) |
 | [`examples/pnl-v2.ts`](examples/pnl-v2.ts) | **PnL v2 REST**: leaderboards, token traders, wallet overview/history/performance/risk/chart, wallet-summary batch, batch positions (examples use a meme mint, not SOL) |
 | [`examples/pnl-v2-datastream.ts`](examples/pnl-v2-datastream.ts) | **PnL v2 Datastream**: `subscribe.pnl.position`, `.wallet`, `.summary` with `tradeUpdate`, `balanceUpdate`, `priceUpdate`, and wallet summary payloads |
+| [`examples/dca.ts`](examples/dca.ts) | **Jupiter DCA REST**: `getDcaPrograms`, wallet/orders, single order, token flow/buyers/sellers/users, pair |
+| [`examples/dca-datastream.ts`](examples/dca-datastream.ts) | **Jupiter DCA Datastream**: `subscribe.dca.all`, `.opened`, `.filled`, `.closed`, `.deposit`, `.withdraw`, `.collectedFee`, `.position`, `.token().buyers()/sellers()`, `.wallet`, `.order` |
 | [`examples/datastream.ts`](examples/datastream.ts) | WebSocket subscriptions (prices, txs, stats, volume, etc.) |
 | [`examples/utils.ts`](examples/utils.ts) | Shared helpers (`handleError`, formatting) |
 
@@ -1439,10 +1442,6 @@ const risk = await client.getPnlV2WalletRisk('walletAddress');
 const positions = await client.getPnlV2WalletPositions('walletAddress', { filter: 'holding', limit: 50, pnlMode: 'adjusted' });
 const chart = await client.getPnlV2WalletChart('walletAddress', { time_from: startUnix, time_to: endUnix });
 
-// Wallet status / refresh
-const status = await client.getPnlV2WalletStatus('walletAddress');     // { exists, status, counts, ... } or { exists: false, status: 'not_found' }
-const refresh = await client.refreshPnlV2Wallet('walletAddress');       // 202 Accepted, { queued, message }
-
 // Batch (limits: 100 wallet summaries, 100 tokens per wallet batch, 200 wallets per token batch, 200 pairs)
 await client.batchPnlV2WalletSummaries(['walletA', 'walletB']); // wallet-level summary + identity + raw tags
 await client.batchPnlV2WalletTokenPositions('walletAddress', ['mintA', 'mintB'], { pnlMode: 'adjusted' });
@@ -1454,6 +1453,91 @@ const holders = await client.getTokenHolders('tokenMint', 'all');
 ```
 
 See [`examples/pnl-v2.ts`](examples/pnl-v2.ts) for runnable snippets.
+
+### Jupiter DCA REST (`/dca/*`)
+
+Track Jupiter recurring (DCA) orders. All endpoints accept an optional `program` query param (default `"jupiter"`); aliases `dex` and `platform` are also supported server-side.
+
+| Method | Description |
+|--------|-------------|
+| `getDcaPrograms()` | List supported DCA programs (`id`, `label`, `programId`) |
+| `getDcaWallet(wallet, params?)` | Wallet's DCA orders + status summary (active/paused/completed/pending) |
+| `getDcaWalletOrders(wallet, params?)` | Paginated wallet orders (no summary) |
+| `getDcaOrder(address, params?)` | Single DCA account by pubkey |
+| `getDcaTokenFlow(mint, params?)` | Aggregate buyer/seller flow for a token |
+| `getDcaTokenBuyers(mint, params?)` | Orders **buying** the token (output mint) |
+| `getDcaTokenSellers(mint, params?)` | Orders **selling** the token (input mint) |
+| `getDcaTokenUsers(mint, params?)` | Top wallets by DCA activity on a token |
+| `getDcaPair(inputMint, outputMint, params?)` | Orders for a specific input → output pair |
+
+Common list params:
+
+- `limit` — wallet/pair: 1–100 (default 50); token endpoints: 1–1000 (default 200)
+- `cursor` — opaque pagination cursor (last `address` from previous page)
+- `sort` / `sortBy` — `volume` (default) | `deposited` | `remaining` | `progress` | `recent` | `created` | `status`
+- `status` — `active` | `paused` | `completed` | `pending` | `all` (default `all`)
+
+```typescript
+// Wallet orders with status summary
+const wallet = await client.getDcaWallet('walletAddress', {
+  status: 'active',
+  sort: 'recent',
+  limit: 25,
+});
+console.log(`${wallet.summary.active} active / ${wallet.summary.completed} completed`);
+
+// Top buyers of a token (token = output mint)
+const buyers = await client.getDcaTokenBuyers('tokenMint', { limit: 50 });
+
+// All orders for a USDC → SOL pair
+const pair = await client.getDcaPair(
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+  'So11111111111111111111111111111111111111112',  // SOL
+  { sort: 'volume' },
+);
+```
+
+Each `DcaOrder` includes program info, status (`active` | `paused` | `completed` | `pending`), direction (`buying` | `selling` | `mixed`), the input/output `DcaToken` (with USD price when available), human-readable amounts (`deposited`, `used`, `remaining`, `received`, `perCycle`, `volume`) plus their `*Usd` siblings, `frequency`, `progressPercent`, `createdAt`/`nextCycleAt` ISO timestamps, and a `raw` map of base-units strings.
+
+### Jupiter DCA Datastream (`dca:jupiter:*`)
+
+Subscribe to live DCA events on Premium, Business, and Enterprise plans. Each event is delivered to the global room (`dca:jupiter`), the matching event-type room, and any scoped rooms that apply.
+
+```typescript
+// All Jupiter DCA events
+ds.subscribe.dca.all().on((ev) => { /* … */ });
+
+// Cycle fills only
+ds.subscribe.dca.filled().on((ev) => {
+  console.log(`fill ${ev.address}: $${ev.usd?.inAmountUsd} → $${ev.usd?.outAmountUsd}`);
+});
+
+// Other event-type rooms
+ds.subscribe.dca.opened();
+ds.subscribe.dca.closed();
+ds.subscribe.dca.deposit();
+ds.subscribe.dca.withdraw();
+ds.subscribe.dca.collectedFee();
+ds.subscribe.dca.position(); // throttled account snapshots, no signature
+
+// Scoped rooms
+ds.subscribe.dca.token('tokenMint').buyers();
+ds.subscribe.dca.token('tokenMint').sellers();
+ds.subscribe.dca.wallet('walletAddress');
+ds.subscribe.dca.order('dcaAccountAddress');
+```
+
+Transaction events (`Opened`, `Filled`, `Closed`, `Deposit`, `Withdraw`, `CollectedFee`) carry `eventName`, `signature`, on-chain raw amounts as strings, a `usd` block, optional `prices` map, and a snapshot `order: DcaOrder`. Position snapshots have no `eventName` or `signature`; they include `writeVersion` and a full `order: DcaOrder`.
+
+```typescript
+import type { DcaStreamEvent, DcaPositionEvent } from '@solana-tracker/data-api';
+
+function isPositionSnapshot(ev: DcaStreamEvent): ev is DcaPositionEvent {
+  return 'writeVersion' in ev;
+}
+```
+
+See [`examples/dca.ts`](examples/dca.ts) and [`examples/dca-datastream.ts`](examples/dca-datastream.ts) for runnable snippets.
 
 ### Top Traders Endpoints
 
