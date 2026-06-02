@@ -478,7 +478,15 @@ export interface SearchParams {
   
   // Socials Filter
   hasSocials?: boolean;
-  
+
+  // Coin Communities (live message counts from monitored community chat)
+  /** When `true`, only tokens with at least one monitored community message. When `false`, only tokens with zero messages. */
+  hasCoinCommunity?: boolean;
+  /** Minimum live community message count (inclusive). */
+  minCommunityMessages?: number;
+  /** Maximum live community message count (inclusive). */
+  maxCommunityMessages?: number;
+
   // Launchpad Filter
   /** Filter by launchpad(s) - single value or array (e.g., 'pumpfun' or ['pumpfun', 'boop']) */
   launchpad?: string | string[];
@@ -565,6 +573,10 @@ export interface SearchResult {
     curvePercentage?: number;
   };
   graduatedAt?: number;
+  /** Whether the token has monitored Coin Communities chat activity. */
+  hasCoinCommunity?: boolean;
+  /** Live community message count (messages observed since the feed monitor started). */
+  communityMessages?: number;
   events?: {
     "1m"?: { priceChangePercentage: number };
     "5m"?: { priceChangePercentage: number };
@@ -1116,13 +1128,27 @@ export interface PnlV2IdentityExchange {
   name: string | null;
 }
 
+/** Primary `.sol` domain from Ridge (Solscan-style domain label). */
+export interface PnlV2IdentitySns {
+  domain: string;
+}
+
 export interface PnlV2Identity {
+  /**
+   * Display name. For SNS-only wallets this is the primary domain (e.g. `solanatracker.sol`).
+   * When a higher-priority label exists (KOL, exchange, bot, etc.), that label keeps `name`
+   * and the domain is still available on `sns.domain`.
+   */
   name?: string | null;
   twitter?: string | null;
   avatar?: string | null;
+  /** Primary label type, e.g. `kol`, `sns`, `bot`, `developer`, `pool`, `exchange`. */
   type?: string | null;
+  /** All resolved labels, e.g. `['kol', 'sns']`. */
   tags?: string[];
   platforms?: string[];
+  /** Present when the wallet has a primary `.sol` domain (may coexist with other tags). */
+  sns?: PnlV2IdentitySns;
   bot?: PnlV2IdentityBot;
   pool?: PnlV2IdentityPool;
   developer?: PnlV2IdentityDeveloper;

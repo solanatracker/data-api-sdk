@@ -108,6 +108,31 @@ export async function searchTokens(query: string) {
   }
 }
 
+// Search tokens with Coin Communities chat activity
+export async function searchTokensWithCoinCommunity() {
+  try {
+    const results = await client.searchTokens({
+      hasCoinCommunity: true,
+      minCommunityMessages: 5,
+      sortBy: 'communityMessages',
+      sortOrder: 'desc',
+      limit: 20,
+    });
+
+    console.log('\n💬 Tokens with Coin Communities activity:');
+    results.data.forEach((token, i) => {
+      console.log(
+        `${i + 1}. ${token.name} (${token.symbol}) — ${token.communityMessages ?? 0} messages` +
+        ` | MC $${(token.marketCapUsd / 1000000).toFixed(2)}M`,
+      );
+    });
+
+    return results;
+  } catch (error) {
+    handleError(error);
+  }
+}
+
 // Check token holders
 export async function getTokenHolders(tokenAddress: string) {
   try {

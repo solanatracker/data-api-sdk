@@ -7,13 +7,13 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 ## Features (Summary)
 
 - Full TypeScript support with detailed interfaces for all API responses
-- **PnL v2**: REST endpoints under `/v2/pnl` (leaderboards, token traders, wallet analytics, wallet-summary batch, batch positions) and Datastream rooms `pnl:{wallet}`, `pnl:{wallet}:{token}`, `pnl:{wallet}:summary` — scoped to meme / tradable tokens, not SOL. Includes `pnlMode` (strict/adjusted/raw), unified wallet identity (KOL, bot, pool, developer, hacker, spam-dusting, exchange, platform tags), always-on token enrichment, opt-in holder enrichment, full position rows on `wallet/positions` and `tokens/:mint/traders`, and `summary.timing.avgHoldTimeSecs` on the wallet overview
+- **PnL v2**: REST endpoints under `/v2/pnl` (leaderboards, token traders, wallet analytics, wallet-summary batch, batch positions) and Datastream rooms `pnl:{wallet}`, `pnl:{wallet}:{token}`, `pnl:{wallet}:summary` — scoped to meme / tradable tokens, not SOL. Includes `pnlMode` (strict/adjusted/raw), unified wallet identity (KOL, bot, pool, developer, hacker, spam-dusting, exchange, SNS primary `.sol` domain, platform tags), always-on token enrichment, opt-in holder enrichment, full position rows on `wallet/positions` and `tokens/:mint/traders`, and `summary.timing.avgHoldTimeSecs` on the wallet overview
 - **Jupiter DCA**: REST endpoints under `/dca/*` (programs, wallet orders, single order, token flow/buyers/sellers/users, trading pair) and Datastream rooms `dca:jupiter[:event][:scope]` for opened, filled, closed, deposit, withdraw, collected_fee, and live position snapshots — scoped per token, wallet, or DCA account
 - Comprehensive coverage of all Solana Tracker Data API endpoints
 - Real-time data streaming via WebSocket (Datastream)
 - Built-in error handling with specific error types
 - Compatible with both Node.js and browser environments
-- Enhanced search with 60+ filter parameters including holder distribution, social media, fees, and more
+- Enhanced search with 60+ filter parameters including holder distribution, social media, fees, Coin Communities chat activity, and more
 - Cursor-based pagination for efficient deep searches
 - Top performers endpoint - get the best performing tokens launched today
 - Token filtering for overview endpoints (Memescope / Pulse overview) (graduated, graduating, latest)
@@ -887,6 +887,30 @@ const activeTokens = await client.searchTokens({
   limit: 20,
 });
 
+// Coin Communities — tokens with live community chat activity
+const communityTokens = await client.searchTokens({
+  hasCoinCommunity: true,
+  sortBy: 'communityMessages',
+  sortOrder: 'desc',
+  limit: 50,
+});
+
+// At least 10 community messages and min $20k liquidity
+const activeCommunityTokens = await client.searchTokens({
+  hasCoinCommunity: true,
+  minCommunityMessages: 10,
+  minLiquidity: 20000,
+});
+
+// Active pump.fun tokens with community chat
+const pumpfunCommunity = await client.searchTokens({
+  market: 'pumpfun',
+  hasCoinCommunity: true,
+  sortBy: 'communityMessages',
+  sortOrder: 'desc',
+});
+// Each result includes hasCoinCommunity and communityMessages on the pool row
+
 // Filter by volume across different timeframes
 const highVolumeTokens = await client.searchTokens({
   minVolume_24h: 100000, // At least $100k volume in 24h
@@ -1070,6 +1094,12 @@ const customSearch = await client.searchTokens({
 - `minFeesTrading` / `maxFeesTrading` - Trading fees paid
 - `minFeesTips` / `maxFeesTips` - Priority fees/tips paid
 
+**Coin Communities Filters:**
+
+- `hasCoinCommunity` - `true` for tokens with at least one monitored community message; `false` for tokens with zero messages
+- `minCommunityMessages` / `maxCommunityMessages` - Filter by live message count range (inclusive)
+- Sort by `sortBy=communityMessages` with `sortOrder=asc|desc`
+
 #### Search Response
 
 The search response includes pagination information and detailed token data:
@@ -1151,6 +1181,10 @@ interface SearchResult {
     tiktok?: string;
     github?: string;
   };
+
+  // Coin Communities (live chat message counts)
+  hasCoinCommunity?: boolean;
+  communityMessages?: number;
 
   // Fees information
   fees?: {
@@ -1382,11 +1416,17 @@ const top = await client.getPnlV2TopTraders({ days: 90, pnlMode: mode, limit: 50
 
 #### Unified identity
 
-Every wallet-scoped response now carries an `identity` field (top-level or per-row). It can include multiple tags and pluggable sources (`kol`, `bot`, `pool`, `developer`, `hacker`, `spam_dusting`, `exchange`, platform tags, `arbitrage`, etc.):
+Every wallet-scoped response now carries an `identity` field (top-level or per-row). It can include multiple tags and pluggable sources (`kol`, `bot`, `pool`, `developer`, `hacker`, `spam_dusting`, `exchange`, SNS, platform tags, `arbitrage`, etc.):
 
 ```typescript
 import type { PnlV2Identity } from '@solana-tracker/data-api';
-// identity?: { name, twitter, avatar, type, tags, platforms, bot, pool, developer, hacker, spamDusting, exchange }
+// identity?: { name, twitter, avatar, type, tags, platforms, sns, bot, pool, developer, hacker, spamDusting, exchange }
+
+// SNS-only wallet — name is the primary .sol domain
+// { name: 'solanatracker.sol', sns: { domain: 'solanatracker.sol' }, tags: ['sns'], type: 'sns' }
+
+// KOL + SNS — higher-priority label keeps name; domain still on sns
+// { name: 'SomeKolName', sns: { domain: 'solanatracker.sol' }, tags: ['kol', 'sns'], type: 'kol' }
 ```
 
 #### Token-scoped PnL enrichment
@@ -1647,6 +1687,10 @@ interface SearchResult {
     website?: string;
     // ... more social media links
   };
+
+  // Coin Communities
+  hasCoinCommunity?: boolean;
+  communityMessages?: number;
   
   fees?: {
     total?: number; // Total fees in SOL

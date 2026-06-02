@@ -53,6 +53,9 @@ function formatIdentity(identity?: PnlV2Identity | null): string {
   if (!identity) return '';
   const parts: string[] = [];
   if (identity.name) parts.push(identity.name);
+  if (identity.sns?.domain && identity.name !== identity.sns.domain) {
+    parts.push(`@${identity.sns.domain}`);
+  }
   if (identity.type) parts.push(`[${identity.type}]`);
   if (identity.tags?.length) parts.push(`tags=${identity.tags.join(',')}`);
   if (identity.pool) parts.push(`pool:${identity.pool.program}`);
