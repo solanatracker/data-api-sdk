@@ -7,10 +7,14 @@ Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://
 ## Features (Summary)
 
 - Full TypeScript support with detailed interfaces for all API responses
-- **PnL v2**: REST endpoints under `/v2/pnl` (leaderboards, token traders, wallet analytics, wallet-summary batch, batch positions) and Datastream rooms `pnl:{wallet}`, `pnl:{wallet}:{token}`, `pnl:{wallet}:summary` — scoped to meme / tradable tokens, not SOL. Includes `pnlMode` (strict/adjusted/raw), unified wallet identity (KOL, bot, pool, developer, hacker, spam-dusting, exchange, SNS primary `.sol` domain, platform tags), always-on token enrichment, opt-in holder enrichment, full position rows on `wallet/positions` and `tokens/:mint/traders`, and `summary.timing.avgHoldTimeSecs` on the wallet overview
-- **Jupiter DCA**: REST endpoints under `/dca/*` (programs, wallet orders, single order, token flow/buyers/sellers/users, trading pair) and Datastream rooms `dca:jupiter[:event][:scope]` for opened, filled, closed, deposit, withdraw, collected_fee, and live position snapshots — scoped per token, wallet, or DCA account
+- **Lighthouse**: `GET /lighthouse` — live buys/sells/traders/volume/launches/migrations across Solana memecoin markets (`5m`/`1h`/`6h`/`24h` with period-over-period change)
+- **Whale & KOL trades**: REST (`/trades/whales`, `/trades/kols`, `/trades/kols/{token}`) and Datastream rooms (`transaction:whale:{volume}`, `transaction:kol`, `transaction:kol:{volume}`) with optional KOL `identity`
+- **Prediction Markets (Beta)**: dedicated `PredictionMarketsClient` for Kalshi + Polymarket REST (`https://prediction-market-api.solanatracker.io`) plus Datastream `subscribe.pm.*` helpers for all `pm:*` rooms
+- **Contract corrections**: `PriceData.priceQuote` + timeframe `priceChanges`; risk category wallets use `wallet` (not `address`); Datastream JSON `ping` → `pong`
+- **PnL v2**: REST endpoints under `/v2/pnl` (leaderboards, token traders, wallet analytics, wallet-summary batch, batch positions) and Datastream rooms `pnl:{wallet}`, `pnl:{wallet}:{token}`, `pnl:{wallet}:summary` — scoped to meme / tradable tokens, not SOL. Includes `pnlMode` (strict/adjusted/raw), `currency` (`usd`/`sol`/`eur`) on wallet overview/history/performance, unified wallet identity (KOL, bot, pool, developer, hacker, spam-dusting, exchange, SNS primary `.sol` domain, platform tags), always-on token enrichment, opt-in holder enrichment, full position rows on `wallet/positions` and `tokens/:mint/traders`, and `summary.timing.avgHoldTimeSecs` on the wallet overview
+- **Jupiter DCA**: REST endpoints under `/dca/*` (programs, wallet orders, single order, token flow/buyers/sellers/users, trading pair) and Datastream rooms `dca:jupiter[:event][:scope]` for opened, filled, closed, deposit, withdraw, collected_fee, and live position snapshots — scoped per token, wallet, or DCA account (includes V2 `openDcaV2` orders)
 - Comprehensive coverage of all Solana Tracker Data API endpoints
-- Real-time data streaming via WebSocket (Datastream)
+- Real-time data streaming via WebSocket (Datastream) with JSON ping/pong heartbeat handling
 - Built-in error handling with specific error types
 - Compatible with both Node.js and browser environments
 - Enhanced search with 60+ filter parameters including holder distribution, social media, fees, Coin Communities chat activity, and more
@@ -43,6 +47,18 @@ Or with yarn:
 ```bash
 yarn add @solana-tracker/data-api
 ```
+
+### 0.4 type corrections
+
+The 0.4 contract sync corrects several previously inaccurate public types:
+
+- Risk entries expose the wire field `wallet`; deprecated `address` remains as
+  an SDK-normalized alias for 0.3.x consumers.
+- An omitted wire `TokenRisk.bundlers` is normalized to an empty category.
+- New whale/KOL rooms use `WhaleKolTransaction`, whose `priceUsd` can be null;
+  the existing `TokenTransaction` type remains unchanged.
+
+New code should use `wallet` and the exact whale/KOL payload type.
 
 ## Quick Start
 
@@ -87,6 +103,9 @@ Runnable samples live in the [`examples/`](examples/) folder. Copy a file, set y
 | [`examples/pnl-v2-datastream.ts`](examples/pnl-v2-datastream.ts) | **PnL v2 Datastream**: `subscribe.pnl.position`, `.wallet`, `.summary` with `tradeUpdate`, `balanceUpdate`, `priceUpdate`, and wallet summary payloads |
 | [`examples/dca.ts`](examples/dca.ts) | **Jupiter DCA REST**: `getDcaPrograms`, wallet/orders, single order, token flow/buyers/sellers/users, pair |
 | [`examples/dca-datastream.ts`](examples/dca-datastream.ts) | **Jupiter DCA Datastream**: `subscribe.dca.all`, `.opened`, `.filled`, `.closed`, `.deposit`, `.withdraw`, `.collectedFee`, `.position`, `.token().buyers()/sellers()`, `.wallet`, `.order` |
+| [`examples/lighthouse.ts`](examples/lighthouse.ts) | **Lighthouse**: `getLighthouse()` market activity overview |
+| [`examples/whale-kol.ts`](examples/whale-kol.ts) | **Whale & KOL**: REST feeds + `subscribe.tx.whale` / `.kol` rooms |
+| [`examples/prediction-markets.ts`](examples/prediction-markets.ts) | **Prediction Markets (Beta)**: `PredictionMarketsClient` REST + `subscribe.pm.*` rooms |
 | [`examples/datastream.ts`](examples/datastream.ts) | WebSocket subscriptions (prices, txs, stats, volume, etc.) |
 | [`examples/utils.ts`](examples/utils.ts) | Shared helpers (`handleError`, formatting) |
 
@@ -476,6 +495,20 @@ dataStream.subscribe.curvePercentage(market, percentage); // Market options: 'la
 // Snipers and Insiders tracking
 dataStream.subscribe.snipers(tokenAddress); // Track sniper wallets
 dataStream.subscribe.insiders(tokenAddress); // Track insider wallets
+
+// Whale & KOL trades (cumulative volume rooms)
+dataStream.subscribe.tx.whale(5000); // transaction:whale:5000 (1000|2500|5000|10000)
+dataStream.subscribe.tx.kol(); // all KOL trades
+dataStream.subscribe.tx.kol(10000); // transaction:kol:10000
+dataStream.subscribe.tx.poolWallet(tokenAddress, poolId, walletAddress); // token+pool+wallet
+
+// Prediction Markets (Beta) — same Datastream hub; dedupe with sourceId/tradeId
+dataStream.subscribe.pm.trades();
+dataStream.subscribe.pm.significantTrades();
+dataStream.subscribe.pm.exchange('polymarket').trades();
+dataStream.subscribe.pm.market('polymarket', 'clobTokenId').prices();
+dataStream.subscribe.pm.event('kalshi', 'eventTicker').volume();
+dataStream.subscribe.pm.crypto('btc').prices();
 ```
 
 Each subscription method returns a response object with:
@@ -1467,11 +1500,14 @@ const traders = await client.getPnlV2TokenTraders('tokenMint', { limit: 50, sort
 const firstBuyers = await client.getPnlV2TokenFirstBuyers('tokenMint', { sort: 'first_trade', direction: 'asc' });
 
 // Wallet (narrow with queued guard when needed)
-const overview = await client.getPnlV2WalletOverview('walletAddress', { pnlMode: 'adjusted' });
+const overview = await client.getPnlV2WalletOverview('walletAddress', {
+  pnlMode: 'adjusted',
+  currency: 'sol', // also: 'usd' (default) | 'eur' — on overview, history, and performance
+});
 if ('queued' in overview && overview.queued) {
   console.log(overview.message);
 } else {
-  console.log(overview.summary.roi, overview.identity, overview.pnlMode);
+  console.log(overview.summary.roi, overview.identity, overview.pnlMode, overview.currency);
 }
 
 const history = await client.getPnlV2WalletHistory('walletAddress', { period: '30d', limit: 30 });
@@ -1578,6 +1614,40 @@ function isPositionSnapshot(ev: DcaStreamEvent): ev is DcaPositionEvent {
 ```
 
 See [`examples/dca.ts`](examples/dca.ts) and [`examples/dca-datastream.ts`](examples/dca-datastream.ts) for runnable snippets.
+
+### Lighthouse
+
+```typescript
+const markets = await client.getLighthouse();
+// markets[0].stats['24h'].volume.total, .changePct, .transactions, .wallets, .tokensCreated, .migrations
+```
+
+### Whale & KOL Trades
+
+```typescript
+const whales = await client.getWhaleTrades({ minVolume: 5000, limit: 100, showMeta: true });
+const kols = await client.getKolTrades({ minVolume: 0, limit: 100 });
+const tokenKols = await client.getKolTradesByToken('tokenMint', { hideArb: true });
+// Each trade may include identity: { name, twitter, avatar }
+```
+
+### Prediction Markets REST (Beta)
+
+```typescript
+import { PredictionMarketsClient } from '@solana-tracker/data-api';
+
+const pm = new PredictionMarketsClient({ apiKey: 'YOUR_API_KEY' });
+// Same Data API key; separate host: https://prediction-market-api.solanatracker.io
+
+const markets = await pm.getMarkets({ exchange: 'polymarket', status: 'active', limit: 20 });
+const snapshot = await pm.getMarketSnapshot('ticker-or-token-id');
+const trades = await pm.getGlobalTrades({ limit: 50 });
+const wallet = await pm.getAccountOverview('0x...'); // Polymarket wallet analytics
+```
+
+Query parameters use snake_case on the wire (e.g. `event_ticker`, `min_volume`) and are typed on the `Pm*Params` interfaces. Response bodies use camelCase.
+
+See [`examples/prediction-markets.ts`](examples/prediction-markets.ts) and the [Prediction Markets docs](https://docs.solanatracker.io/prediction-markets/overview).
 
 ### Top Traders Endpoints
 

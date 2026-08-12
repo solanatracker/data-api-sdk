@@ -1,6 +1,6 @@
 {
     "name": "@solana-tracker/data-api",
-    "version": "0.3.2",
+    "version": "0.4.0",
     "description": "Official Solana Tracker Data API client for accessing Solana Data",
     "main": "dist/index.js",
     "module": "dist/index.mjs",
@@ -13,7 +13,9 @@
         }
     },
     "scripts": {
-         "build": "tsup src/index.ts --format esm,cjs --dts",
+        "build": "tsup src/index.ts src/data-api.ts src/interfaces.ts --format esm,cjs --dts --clean --external ws",
+        "test": "jest",
+        "typecheck": "tsc --noEmit",
         "prepublishOnly": "npm run build"
     },
     "keywords": [
@@ -41,11 +43,12 @@
         "node-fetch": "^3.3.2"
     },
     "optionalDependencies": {
-        "ws": "^8.16.0"
+        "ws": "^8.21.3"
     },
     "devDependencies": {
         "@types/jest": "^29.5.12",
         "@types/node": "^20.11.30",
+        "@types/ws": "^8.18.1",
         "@typescript-eslint/eslint-plugin": "^7.4.0",
         "@typescript-eslint/parser": "^7.4.0",
         "eslint": "^8.57.0",
@@ -62,5 +65,10 @@
         "dist/**/*",
         "README.md",
         "LICENSE"
-    ]
+    ],
+    "directories": {
+        "example": "examples",
+        "test": "tests"
+    },
+    "type": "commonjs"
 }

@@ -78,6 +78,12 @@ import {
   DcaTokenOrdersResponse,
   DcaTokenUsersResponse,
   DcaPairResponse,
+  LighthouseResponse,
+  WhaleTradesParams,
+  KolTradesParams,
+  KolTokenTradesParams,
+  WhaleKolTradesResponse,
+  WhaleMinVolume,
 } from './interfaces';
 
 import { decodeBinaryEvents } from './event-processor';
@@ -307,7 +313,8 @@ export class Client {
         throw error;
       }
 
-      return response.json() as Promise<T>;
+      const data = await response.json();
+      return this.normalizeLegacyRiskFields(data) as T;
     } catch (error) {
       if (error instanceof DataApiError) {
         throw error;
@@ -315,6 +322,58 @@ export class Client {
       // For network errors or other unexpected errors
       throw new DataApiError(`An unexpected error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Preserve the 0.3.x risk response surface while using the corrected wire
+   * field names. The server now returns `wallet` and may omit `bundlers`.
+   */
+  private normalizeLegacyRiskFields(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      value.forEach((item) => this.normalizeLegacyRiskFields(item));
+      return value;
+    }
+    if (!value || typeof value !== 'object') {
+      return value;
+    }
+
+    const record = value as Record<string, unknown>;
+    const isTokenRisk =
+      Array.isArray(record.risks) &&
+      record.snipers !== null &&
+      typeof record.snipers === 'object' &&
+      record.insiders !== null &&
+      typeof record.insiders === 'object';
+
+    if (isTokenRisk) {
+      for (const categoryName of ['snipers', 'insiders'] as const) {
+        const category = record[categoryName] as Record<string, unknown>;
+        if (Array.isArray(category.wallets)) {
+          for (const walletValue of category.wallets) {
+            if (walletValue && typeof walletValue === 'object') {
+              const wallet = walletValue as Record<string, unknown>;
+              if (typeof wallet.wallet === 'string' && wallet.address === undefined) {
+                wallet.address = wallet.wallet;
+              }
+            }
+          }
+        }
+      }
+
+      if (record.bundlers === undefined) {
+        record.bundlers = {
+          count: 0,
+          totalBalance: 0,
+          totalPercentage: 0,
+          totalInitialBalance: 0,
+          totalInitialPercentage: 0,
+          wallets: [],
+        };
+      }
+    }
+
+    Object.values(record).forEach((item) => this.normalizeLegacyRiskFields(item));
+    return value;
   }
 
   /**
@@ -1624,5 +1683,88 @@ export class Client {
     this.validatePublicKey(outputMint, 'outputMint');
     const qs = params ? this.buildQueryString(params) : '';
     return this.request<DcaPairResponse>(`/dca/pair/${inputMint}/${outputMint}${qs}`);
+  }
+
+  // ==========================================================================
+  // Lighthouse (memecoin market activity)
+  // ==========================================================================
+
+  /**
+   * Live activity overview across Solana launchpads and DEXs.
+   * Returns buys, sells, traders, volume, new token launches, and migrations
+   * over `5m`, `1h`, `6h`, and `24h` windows with period-over-period change.
+   * @returns Array of market rows (DEX, launchpad, and aggregate)
+   */
+  async getLighthouse(): Promise<LighthouseResponse> {
+    return this.request<LighthouseResponse>('/lighthouse');
+  }
+
+  // ==========================================================================
+  // Whale & KOL Trades
+  // ==========================================================================
+
+  /**
+   * Latest high-volume (whale) spot trades.
+   * @param params Optional `minVolume` (1000|2500|5000|10000), `cursor`, `limit`, `showMeta`, `hideArb`
+   */
+  async getWhaleTrades(params?: WhaleTradesParams): Promise<WhaleKolTradesResponse> {
+    if (params?.limit !== undefined) {
+      if (!Number.isInteger(params.limit) || params.limit < 1 || params.limit > 500) {
+        throw new ValidationError('limit must be an integer between 1 and 500');
+      }
+    }
+    if (params?.minVolume !== undefined) {
+      const allowed: WhaleMinVolume[] = [1000, 2500, 5000, 10000];
+      if (!allowed.includes(params.minVolume)) {
+        throw new ValidationError(`minVolume must be one of: ${allowed.join(', ')}`);
+      }
+    }
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<WhaleKolTradesResponse>(`/trades/whales${qs}`);
+  }
+
+  /**
+   * Latest trades from the tracked KOL wallet roster.
+   * @param params Optional `minVolume` (0|1000|2500|5000|10000; default 0), `cursor`, `limit`, `showMeta`
+   */
+  async getKolTrades(params?: KolTradesParams): Promise<WhaleKolTradesResponse> {
+    if (params?.limit !== undefined) {
+      if (!Number.isInteger(params.limit) || params.limit < 1 || params.limit > 500) {
+        throw new ValidationError('limit must be an integer between 1 and 500');
+      }
+    }
+    if (params?.minVolume !== undefined) {
+      const allowed = [0, 1000, 2500, 5000, 10000];
+      if (!allowed.includes(params.minVolume)) {
+        throw new ValidationError(`minVolume must be one of: ${allowed.join(', ')}`);
+      }
+    }
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<WhaleKolTradesResponse>(`/trades/kols${qs}`);
+  }
+
+  /**
+   * KOL trades for a specific token mint.
+   * @param tokenMint Token mint address
+   * @param params Optional filters including `hideArb` to keep rows matching the path token
+   */
+  async getKolTradesByToken(
+    tokenMint: string,
+    params?: KolTokenTradesParams,
+  ): Promise<WhaleKolTradesResponse> {
+    this.validatePublicKey(tokenMint, 'tokenMint');
+    if (params?.limit !== undefined) {
+      if (!Number.isInteger(params.limit) || params.limit < 1 || params.limit > 500) {
+        throw new ValidationError('limit must be an integer between 1 and 500');
+      }
+    }
+    if (params?.minVolume !== undefined) {
+      const allowed = [0, 1000, 2500, 5000, 10000];
+      if (!allowed.includes(params.minVolume)) {
+        throw new ValidationError(`minVolume must be one of: ${allowed.join(', ')}`);
+      }
+    }
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<WhaleKolTradesResponse>(`/trades/kols/${tokenMint}${qs}`);
   }
 }

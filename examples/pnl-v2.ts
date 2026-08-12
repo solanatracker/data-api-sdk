@@ -259,14 +259,17 @@ export async function exampleTokenFirstBuyers(tokenAddress: string = TOKEN) {
 // ---------------------------------------------------------------------------
 export async function exampleWalletOverview(walletAddress: string = WALLET) {
   try {
-    const res = await client.getPnlV2WalletOverview(walletAddress, { pnlMode: 'adjusted' });
+    const res = await client.getPnlV2WalletOverview(walletAddress, {
+      pnlMode: 'adjusted',
+      currency: 'sol',
+    });
     if (!guardQueued<PnlV2WalletOverviewResponse>('WalletOverview', res)) return null;
 
-    console.log('\n=== 8. Wallet overview (pnlMode=adjusted) ===');
-    console.log(`Wallet: ${res.wallet} | pnlMode: ${res.pnlMode}`);
+    console.log('\n=== 8. Wallet overview (pnlMode=adjusted, currency=sol) ===');
+    console.log(`Wallet: ${res.wallet} | pnlMode: ${res.pnlMode} | currency: ${res.currency ?? 'usd'}`);
     if (res.identity) console.log(`Identity:${formatIdentity(res.identity)}`);
-    console.log(`PnL: ${formatCurrency(res.summary.pnl.total ?? 0)} (realized ${formatCurrency(res.summary.pnl.realized ?? 0)})`);
-    console.log(`Invested: ${formatCurrency(res.summary.invested ?? 0)} | Proceeds: ${formatCurrency(res.summary.proceeds ?? 0)}`);
+    console.log(`PnL: ${res.summary.pnl.total ?? 0} (realized ${res.summary.pnl.realized ?? 0})`);
+    console.log(`Invested: ${res.summary.invested ?? 0} | Proceeds: ${res.summary.proceeds ?? 0}`);
     console.log(`ROI: ${formatPercentage(res.summary.roi ?? 0)} | Trades: ${res.summary.counts.trades}`);
     console.log(`Win rate: ${formatPercentage(res.analysis.winRate ?? 0)}`);
     console.log(`Tags: platforms=${res.tags.platforms.join(',')} isArbitrage=${res.tags.isArbitrage}`);
@@ -283,10 +286,12 @@ export async function exampleWalletHistory(walletAddress: string = WALLET) {
     const res = await client.getPnlV2WalletHistory(walletAddress, {
       period: '30d',
       limit: 7,
+      currency: 'eur',
     });
     if (!guardQueued<PnlV2WalletHistoryResponse>('WalletHistory', res)) return null;
 
-    console.log('\n=== 9. Wallet history (30d, last 7 days) ===');
+    console.log('\n=== 9. Wallet history (30d, last 7 days, currency=eur) ===');
+    console.log(`currency: ${res.currency ?? 'usd'}`);
     if (res.identity) console.log(`Identity:${formatIdentity(res.identity)}`);
     console.log(`Total days: ${res.summary.totalDays} | Trading: ${res.summary.days.trading}`);
     console.log(`Win rate: ${formatPercentage(res.summary.winRate ?? 0)}`);

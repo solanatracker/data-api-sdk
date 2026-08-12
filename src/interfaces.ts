@@ -76,7 +76,28 @@ export interface MeteoraCurve {
   logo?: string;  // Optional
 }
 
+/** Exact wallet entry returned on the Data API wire. */
+export interface RiskWalletWire {
+  /** Wallet public key */
+  wallet: string;
+  /** Token balance held by this wallet (UI amount) */
+  balance: number;
+  /** Percent of supply held by this wallet */
+  percentage: number;
+}
+
+/** SDK-normalized risk wallet with the legacy `address` alias. */
 export interface RiskWallet {
+  /**
+   * Correct wire field. Optional in this compatibility type so 0.3.x object
+   * literals containing only `address` continue to compile. SDK responses
+   * always populate it; use `RiskWalletWire` for the exact wire shape.
+   */
+  wallet?: string;
+  /**
+   * @deprecated Use `wallet`. Retained as a normalized SDK alias for 0.3.x
+   * compatibility; the Data API wire response uses `wallet`.
+   */
   address: string;
   balance: number;
   percentage: number;
@@ -213,6 +234,11 @@ export interface RiskFees {
 export interface TokenRisk {
   snipers: RiskCategory;
   insiders: RiskCategory;
+  /**
+   * The wire response may omit this summary. The SDK normalizes omission to an
+   * empty category for 0.3.x compatibility; use the dedicated bundlers endpoint
+   * for a complete list.
+   */
   bundlers: BundlersCategory;
   top10: number;
   dev: DevHolding;
@@ -610,11 +636,43 @@ export interface TokenOverview {
   graduated: TokenDetailResponse[];
 }
 
+/** Price change percentage for a single timeframe (percent units, e.g. `-3.91`). */
+export interface PriceChangePercentage {
+  priceChangePercentage: number;
+}
+
+/**
+ * Present when `priceChanges=true` on price endpoints.
+ * Timeframe keys may be omitted when unavailable.
+ */
+export interface PriceChanges {
+  '1m'?: PriceChangePercentage;
+  '5m'?: PriceChangePercentage;
+  '15m'?: PriceChangePercentage;
+  '30m'?: PriceChangePercentage;
+  '1h'?: PriceChangePercentage;
+  '2h'?: PriceChangePercentage;
+  '3h'?: PriceChangePercentage;
+  '4h'?: PriceChangePercentage;
+  '5h'?: PriceChangePercentage;
+  '6h'?: PriceChangePercentage;
+  '12h'?: PriceChangePercentage;
+  '24h'?: PriceChangePercentage;
+}
+
 export interface PriceData {
+  /** Token price in USD */
   price: number;
+  /** Token price in quote units when available */
+  priceQuote?: number;
+  /** Liquidity in USD */
   liquidity: number;
+  /** Market cap in USD */
   marketCap: number;
+  /** Unix timestamp in milliseconds */
   lastUpdated: number;
+  /** Present when `priceChanges=true` */
+  priceChanges?: PriceChanges;
 }
 
 export interface PriceHistoryData {
@@ -1593,11 +1651,24 @@ export interface PnlV2WalletHistoryParams {
   start?: string;
   end?: string;
   limit?: number;
+  /**
+   * Denomination for monetary fields. Defaults to `usd`.
+   * Pass `sol` or `eur` to convert USD snapshot values at read time.
+   * Historical endpoints use the daily rate for each snapshot date.
+   * Counts, percentages, timestamps, and ROI are not converted.
+   */
+  currency?: 'usd' | 'sol' | 'eur';
 }
 
 export interface PnlV2WalletPerformanceParams {
   period?: '1d' | '7d' | '14d' | '30d' | '90d' | 'all';
   days?: number;
+  /**
+   * Denomination for monetary fields. Defaults to `usd`.
+   * Pass `sol` or `eur` to convert USD snapshot values at read time.
+   * Counts, percentages, timestamps, and ROI are not converted.
+   */
+  currency?: 'usd' | 'sol' | 'eur';
 }
 
 export interface PnlV2WalletPositionsParams {
@@ -1631,6 +1702,12 @@ export interface PnlV2WalletChartParams {
 
 export interface PnlV2WalletOverviewParams {
   pnlMode?: PnlMode;
+  /**
+   * Denomination for monetary fields. Defaults to `usd`.
+   * Pass `sol` or `eur` to convert USD snapshot values at read time using current spot.
+   * Counts, percentages, timestamps, and ROI are not converted.
+   */
+  currency?: 'usd' | 'sol' | 'eur';
 }
 
 export interface PnlV2WalletTokenPositionParams {
@@ -1703,6 +1780,8 @@ export interface PnlV2WalletTokenPositionResponse extends PnlV2Position {
 export interface PnlV2WalletHistoryResponse {
   wallet?: string;
   identity?: PnlV2Identity | null;
+  /** Present when a non-USD `currency` was requested (`sol` or `eur`). */
+  currency?: 'sol' | 'eur';
   days: PnlV2Snapshot[];
   summary: {
     days: {
@@ -1730,16 +1809,20 @@ export interface PnlV2WalletPerformanceDay {
   unrealizedPnl: number | null;
   totalPnl: number | null;
   volume: number | null;
+  /** Daily activity within the window (`day_buys + day_sells`), not cumulative lifetime totals. */
   trades: number;
 }
 
 export interface PnlV2WalletPerformanceResponse {
   wallet?: string;
   identity?: PnlV2Identity | null;
+  /** Present when a non-USD `currency` was requested (`sol` or `eur`). */
+  currency?: 'sol' | 'eur';
   window: number;
   totals: {
     realizedPnl: number | null;
     volume: number | null;
+    /** Sum of daily activity trades within the window (`day_buys + day_sells`). */
     trades: number;
   };
   bestDay: {
@@ -1763,6 +1846,7 @@ export interface PnlV2WalletPerformanceResponse {
     currentNegative: number | null;
   };
   drawdown: {
+    /** Maximum drawdown in the response currency. */
     amount: number | null;
     percent: number | null;
   };
@@ -1875,6 +1959,8 @@ export interface PnlV2WalletOverviewResponse {
   wallet?: string;
   identity?: PnlV2Identity | null;
   pnlMode?: PnlMode;
+  /** Present when a non-USD `currency` was requested (`sol` or `eur`). */
+  currency?: 'sol' | 'eur';
   summary: PnlV2Summary;
   analysis: {
     winRate: number | null;
@@ -2347,3 +2433,152 @@ export type DcaStreamEvent =
 
 /** Transaction events (everything except the position snapshot). */
 export type DcaTransactionEvent = Exclude<DcaStreamEvent, DcaPositionEvent>;
+
+// ============================================================================
+// Lighthouse (memecoin market activity overview)
+// ============================================================================
+
+/** Metric with current-window total and percent change vs the previous equal-length window. */
+export interface MetricWithChange {
+  /** Value for the current window. */
+  total: number;
+  /** Percent change vs the previous equal-length window. `0` when the previous window total is `0`. */
+  changePct: number;
+}
+
+/** Buy/sell split metric with percent change on `total`. */
+export interface SideSplitMetric {
+  /** Total for the current window. */
+  total: number;
+  /** Buy-side portion of the current window. */
+  buys: number;
+  /** Sell-side portion of the current window. */
+  sells: number;
+  /** Percent change of `total` vs the previous equal-length window. */
+  changePct: number;
+}
+
+export interface LighthouseTimeframeStats {
+  transactions: SideSplitMetric;
+  /** Approximate unique trader wallets (HyperLogLog). */
+  wallets: MetricWithChange;
+  /** USD volume for the window. */
+  volume: SideSplitMetric;
+  tokensCreated: MetricWithChange;
+  migrations: MetricWithChange;
+}
+
+export interface LighthouseMarketStats {
+  '5m': LighthouseTimeframeStats;
+  '1h': LighthouseTimeframeStats;
+  '6h': LighthouseTimeframeStats;
+  '24h': LighthouseTimeframeStats;
+}
+
+/** One DEX, launchpad, or aggregate market row from `GET /lighthouse`. */
+export interface LighthouseMarket {
+  /** Market key (e.g. `all`, `pumpfun`, `raydium-all`, `meteora-curve:bags`). */
+  market: string;
+  /** Human-readable display name. */
+  label: string;
+  /** Logo URL, or an empty string when unavailable. */
+  icon: string;
+  /** DEX or launchpad URL, or an empty string when unavailable. */
+  url: string;
+  /** Parent DEX/launchpad key for child markets. Omitted for top-level markets. */
+  parent?: string;
+  stats: LighthouseMarketStats;
+}
+
+/** Response for `GET /lighthouse` — top-level array of markets. */
+export type LighthouseResponse = LighthouseMarket[];
+
+// ============================================================================
+// Whale & KOL Trades
+// ============================================================================
+
+/** Allowed minimum USD volume thresholds for whale trade feeds. */
+export type WhaleMinVolume = 1000 | 2500 | 5000 | 10000;
+
+/** Allowed minimum USD volume thresholds for KOL trade feeds (`0` = all eligible). */
+export type KolMinVolume = 0 | 1000 | 2500 | 5000 | 10000;
+
+/** KOL identity metadata when the wallet is on the shared KOL roster. */
+export interface TradeIdentity {
+  name?: string | null;
+  twitter?: string | null;
+  avatar?: string;
+}
+
+export interface WhaleKolTokenMetaSide {
+  name?: string | null;
+  symbol?: string | null;
+  image?: string | null;
+  decimals?: number | null;
+  amount?: number;
+  address?: string;
+  priceUsd?: number | null;
+  [key: string]: unknown;
+}
+
+/** A single whale or KOL trade row. */
+export interface WhaleKolTrade {
+  tx: string;
+  amount: number;
+  priceUsd: number | null;
+  /** USD volume at or above `$minVolume`. */
+  volume: number;
+  volumeSol: number;
+  type: 'buy' | 'sell';
+  wallet: string;
+  /** Unix timestamp in milliseconds. */
+  time: number;
+  program: string;
+  pools: string[];
+  /** Present when the wallet is on the shared KOL roster. */
+  identity?: TradeIdentity;
+  /** Present when `showMeta=true`. */
+  meta?: {
+    from?: WhaleKolTokenMetaSide;
+    to?: WhaleKolTokenMetaSide;
+  };
+}
+
+export interface WhaleTradesParams {
+  /** Minimum absolute USD volume. Allowed: `1000`, `2500`, `5000`, `10000`. Default `1000`. */
+  minVolume?: WhaleMinVolume;
+  /** Opaque `nextCursor` from a previous response, or a raw millisecond timestamp. */
+  cursor?: string;
+  /** Page size. Default `250`, max `500`. */
+  limit?: number;
+  /** When true, attach `meta.from` / `meta.to` token metadata and historical prices. */
+  showMeta?: boolean;
+  /** Keep rows where either swap side matches the selected/main token. */
+  hideArb?: boolean;
+  /** Only `DESC` is supported. */
+  sortDirection?: 'DESC';
+}
+
+export interface KolTradesParams {
+  /** Minimum absolute USD volume. Use `0` or omit for all eligible KOL trades. Default `0`. */
+  minVolume?: KolMinVolume;
+  cursor?: string;
+  limit?: number;
+  showMeta?: boolean;
+  /** Keep rows where either swap side matches the selected/main token. */
+  hideArb?: boolean;
+  sortDirection?: 'DESC';
+}
+
+/** Params for `GET /trades/kols/{token}`. */
+export type KolTokenTradesParams = KolTradesParams;
+
+export interface WhaleKolTradesResponse {
+  trades: WhaleKolTrade[];
+  /** Opaque base64url cursor for the next page. */
+  nextCursor: string | null;
+  hasNextPage: boolean;
+  sortDirection: 'DESC';
+  /** Echoed request filter when the effective threshold is at least $1,000. */
+  minVolume?: WhaleMinVolume;
+}

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import './websocket-polyfill';
+import { ensureWebSocket } from './websocket-polyfill';
 import {
   TokenInfo,
   PoolInfo,
@@ -16,7 +16,22 @@ import {
   DcaWithdrawEvent,
   DcaCollectedFeeEvent,
   DcaPositionEvent,
+  TradeIdentity,
+  WhaleMinVolume,
 } from './interfaces';
+import {
+  type PmExchange,
+  type PmStreamUpdate,
+  type PmTradeUpdate,
+  type PmPriceUpdate,
+  type PmQuoteUpdate,
+  type PmOrderbookUpdate,
+  type PmVolumeUpdate,
+  type PmCryptoPriceUpdate,
+  type PmMarketLifecycleUpdate,
+  type PmResolutionUpdate,
+  pmRoomSegment,
+} from './prediction-markets-stream';
 
 /**
  * Room types for the WebSocket data stream
@@ -198,6 +213,7 @@ class SubscriptionMethods {
   public volume: VolumeSubscriptions;
   public pnl: PnlSubscriptions;
   public dca: DcaSubscriptions;
+  public pm: PredictionMarketsSubscriptions;
 
   constructor(datastream: Datastream) {
     this.ds = datastream;
@@ -207,6 +223,7 @@ class SubscriptionMethods {
     this.volume = new VolumeSubscriptions(datastream);
     this.pnl = new PnlSubscriptions(datastream);
     this.dca = new DcaSubscriptions(datastream);
+    this.pm = new PredictionMarketsSubscriptions(datastream);
   }
 
   /**
@@ -599,6 +616,152 @@ class DcaSubscriptions {
   }
 }
 
+/**
+ * Prediction Markets (`pm:*`) subscription helpers.
+ *
+ * Room segments are lowercased. Polymarket market rooms require decimal CLOB token IDs.
+ * Delivery is at-least-once — deduplicate with `sourceId` or `tradeId`.
+ */
+class PredictionMarketsSubscriptions {
+  private ds: Datastream;
+
+  constructor(datastream: Datastream) {
+    this.ds = datastream;
+  }
+
+  /** Every non-market-state realtime event (`pm:all`). */
+  all(): SubscribeResponse<PmStreamUpdate> {
+    return this.ds._subscribe<PmStreamUpdate>('pm:all');
+  }
+
+  /** Full trade tape across Kalshi and Polymarket (`pm:trades`). */
+  trades(): SubscribeResponse<PmTradeUpdate> {
+    return this.ds._subscribe<PmTradeUpdate>('pm:trades');
+  }
+
+  /** Trades with notionalUsd ≥ $25 (`pm:trades:significant`). */
+  significantTrades(): SubscribeResponse<PmTradeUpdate> {
+    return this.ds._subscribe<PmTradeUpdate>('pm:trades:significant');
+  }
+
+  /** Global market lifecycle events (`pm:market_lifecycle`). */
+  marketLifecycle(): SubscribeResponse<PmMarketLifecycleUpdate> {
+    return this.ds._subscribe<PmMarketLifecycleUpdate>('pm:market_lifecycle');
+  }
+
+  /** Global resolution events (`pm:resolution`). */
+  resolution(): SubscribeResponse<PmResolutionUpdate> {
+    return this.ds._subscribe<PmResolutionUpdate>('pm:resolution');
+  }
+
+  /** Exchange-scoped non-state feed (`pm:{exchange}`). */
+  exchange(exchange: PmExchange): {
+    /** `pm:{exchange}` */
+    all(): SubscribeResponse<PmStreamUpdate>;
+    /** `pm:{exchange}:trades` */
+    trades(): SubscribeResponse<PmTradeUpdate>;
+    /** `pm:{exchange}:market_lifecycle` */
+    marketLifecycle(): SubscribeResponse<PmMarketLifecycleUpdate>;
+    /** `pm:{exchange}:resolution` */
+    resolution(): SubscribeResponse<PmResolutionUpdate>;
+    /** `pm:{exchange}:type:{eventType}` */
+    type(eventType: string): SubscribeResponse<PmStreamUpdate>;
+  } {
+    const ds = this.ds;
+    const ex = pmRoomSegment(exchange);
+    return {
+      all: () => ds._subscribe<PmStreamUpdate>(`pm:${ex}`),
+      trades: () => ds._subscribe<PmTradeUpdate>(`pm:${ex}:trades`),
+      marketLifecycle: () =>
+        ds._subscribe<PmMarketLifecycleUpdate>(`pm:${ex}:market_lifecycle`),
+      resolution: () => ds._subscribe<PmResolutionUpdate>(`pm:${ex}:resolution`),
+      type: (eventType: string) =>
+        ds._subscribe<PmStreamUpdate>(`pm:${ex}:type:${pmRoomSegment(eventType)}`),
+    };
+  }
+
+  /** Market-scoped rooms (`pm:market:{exchange}:{marketId}[:channel]`). */
+  market(exchange: PmExchange, marketId: string): {
+    all(): SubscribeResponse<PmStreamUpdate>;
+    trades(): SubscribeResponse<PmTradeUpdate>;
+    prices(): SubscribeResponse<PmPriceUpdate>;
+    quotes(): SubscribeResponse<PmQuoteUpdate>;
+    orderbook(): SubscribeResponse<PmOrderbookUpdate>;
+    volume(): SubscribeResponse<PmVolumeUpdate>;
+    marketLifecycle(): SubscribeResponse<PmMarketLifecycleUpdate>;
+    resolution(): SubscribeResponse<PmResolutionUpdate>;
+  } {
+    const ds = this.ds;
+    const base = `pm:market:${pmRoomSegment(exchange)}:${pmRoomSegment(marketId)}`;
+    return {
+      all: () => ds._subscribe<PmStreamUpdate>(base),
+      trades: () => ds._subscribe<PmTradeUpdate>(`${base}:trades`),
+      prices: () => ds._subscribe<PmPriceUpdate>(`${base}:prices`),
+      quotes: () => ds._subscribe<PmQuoteUpdate>(`${base}:quotes`),
+      orderbook: () => ds._subscribe<PmOrderbookUpdate>(`${base}:orderbook`),
+      volume: () => ds._subscribe<PmVolumeUpdate>(`${base}:volume`),
+      marketLifecycle: () =>
+        ds._subscribe<PmMarketLifecycleUpdate>(`${base}:market_lifecycle`),
+      resolution: () => ds._subscribe<PmResolutionUpdate>(`${base}:resolution`),
+    };
+  }
+
+  /** Event-scoped rooms (`pm:event:{exchange}:{eventId}[:trades|:volume]`). */
+  event(exchange: PmExchange, eventId: string): {
+    all(): SubscribeResponse<PmStreamUpdate>;
+    trades(): SubscribeResponse<PmTradeUpdate>;
+    volume(): SubscribeResponse<PmVolumeUpdate>;
+  } {
+    const ds = this.ds;
+    const base = `pm:event:${pmRoomSegment(exchange)}:${pmRoomSegment(eventId)}`;
+    return {
+      all: () => ds._subscribe<PmStreamUpdate>(base),
+      trades: () => ds._subscribe<PmTradeUpdate>(`${base}:trades`),
+      volume: () => ds._subscribe<PmVolumeUpdate>(`${base}:volume`),
+    };
+  }
+
+  /** Events of one type across exchanges (`pm:type:{eventType}`). */
+  type(eventType: string): SubscribeResponse<PmStreamUpdate> {
+    return this.ds._subscribe<PmStreamUpdate>(`pm:type:${pmRoomSegment(eventType)}`);
+  }
+
+  /** Category-scoped feed (`pm:category:{category}`). */
+  category(category: string): SubscribeResponse<PmStreamUpdate> {
+    return this.ds._subscribe<PmStreamUpdate>(`pm:category:${pmRoomSegment(category)}`);
+  }
+
+  /** Series-scoped feed (`pm:series:{exchange}:{seriesId}`). */
+  series(exchange: PmExchange, seriesId: string): SubscribeResponse<PmStreamUpdate> {
+    return this.ds._subscribe<PmStreamUpdate>(
+      `pm:series:${pmRoomSegment(exchange)}:${pmRoomSegment(seriesId)}`
+    );
+  }
+
+  /** Status-scoped lifecycle feed (`pm:status:{status}`). */
+  status(status: string): SubscribeResponse<PmStreamUpdate> {
+    return this.ds._subscribe<PmStreamUpdate>(`pm:status:${pmRoomSegment(status)}`);
+  }
+
+  /** Sport-scoped feed (`pm:sport:{sport}`). */
+  sport(sport: string): SubscribeResponse<PmStreamUpdate> {
+    return this.ds._subscribe<PmStreamUpdate>(`pm:sport:${pmRoomSegment(sport)}`);
+  }
+
+  /** Crypto underlying rooms (`pm:crypto:{asset}` / `:prices`). */
+  crypto(asset: string): {
+    all(): SubscribeResponse<PmCryptoPriceUpdate>;
+    prices(): SubscribeResponse<PmCryptoPriceUpdate>;
+  } {
+    const ds = this.ds;
+    const a = pmRoomSegment(asset);
+    return {
+      all: () => ds._subscribe<PmCryptoPriceUpdate>(`pm:crypto:${a}`),
+      prices: () => ds._subscribe<PmCryptoPriceUpdate>(`pm:crypto:${a}:prices`),
+    };
+  }
+}
+
 class PriceSubscriptions {
   private ds: Datastream;
 
@@ -703,6 +866,48 @@ class TransactionSubscriptions {
     return this.ds._subscribe<TokenTransaction>(
       `transaction:${tokenAddress}:${poolId}`
     );
+  }
+
+  /**
+   * Subscribe to transactions for a specific token, pool, and wallet
+   * Room: `transaction:{tokenAddress}:{poolId}:{walletAddress}`
+   */
+  poolWallet(
+    tokenAddress: string,
+    poolId: string,
+    walletAddress: string
+  ): SubscribeResponse<TokenTransaction> {
+    return this.ds._subscribe<TokenTransaction>(
+      `transaction:${tokenAddress}:${poolId}:${walletAddress}`
+    );
+  }
+
+  /**
+   * Subscribe to cumulative high-volume (whale) trades.
+   * A trade is published to every room whose tier it meets.
+   * @param minVolume USD threshold: `1000` | `2500` | `5000` | `10000`
+   */
+  whale(minVolume: WhaleMinVolume = 1000): SubscribeResponse<WhaleKolTransaction> {
+    const allowed: WhaleMinVolume[] = [1000, 2500, 5000, 10000];
+    if (!allowed.includes(minVolume)) {
+      throw new Error(`minVolume must be one of: ${allowed.join(', ')}`);
+    }
+    return this.ds._subscribe<WhaleKolTransaction>(`transaction:whale:${minVolume}`);
+  }
+
+  /**
+   * Subscribe to all KOL roster trades (no $1k floor).
+   * Optional volume tier rooms use the same cumulative thresholds as whale rooms.
+   */
+  kol(minVolume?: WhaleMinVolume): SubscribeResponse<WhaleKolTransaction> {
+    if (minVolume === undefined) {
+      return this.ds._subscribe<WhaleKolTransaction>('transaction:kol');
+    }
+    const allowed: WhaleMinVolume[] = [1000, 2500, 5000, 10000];
+    if (!allowed.includes(minVolume)) {
+      throw new Error(`minVolume must be one of: ${allowed.join(', ')}`);
+    }
+    return this.ds._subscribe<WhaleKolTransaction>(`transaction:kol:${minVolume}`);
   }
 
   /**
@@ -822,6 +1027,7 @@ export class Datastream extends EventEmitter {
     this.isConnecting = true;
 
     try {
+      await ensureWebSocket();
       await Promise.all([
         this.createSocket('main'),
         this.createSocket('transaction'),
@@ -947,19 +1153,61 @@ export class Datastream extends EventEmitter {
   }
 
   /**
+   * Deduplicate transaction payloads (object or single-item / multi-item arrays).
+   * Returns `undefined` when every item was already seen.
+   */
+  private dedupeTransactionPayload(room: string, data: any): any | undefined {
+    const isWhaleKolRoom =
+      room.startsWith('transaction:whale:') ||
+      room === 'transaction:kol' ||
+      room.startsWith('transaction:kol:');
+
+    if (Array.isArray(data)) {
+      // 0.3.x forwarded transaction arrays unchanged. New cumulative whale/KOL
+      // rooms need per-room dedupe so each subscribed threshold still fires.
+      if (!isWhaleKolRoom) {
+        return data;
+      }
+      const filtered = data.filter((item) => {
+        const tx = item?.tx;
+        if (typeof tx !== 'string') {
+          return true;
+        }
+        const key = `${room}\0${tx}`;
+        if (this.transactions.has(key)) {
+          return false;
+        }
+        this.transactions.add(key);
+        return true;
+      });
+      return filtered.length === 0 ? undefined : filtered;
+    }
+
+    const tx = data?.tx;
+    if (typeof tx === 'string') {
+      // Preserve 0.3.x global dedupe for legacy rooms while keeping cumulative
+      // whale/KOL thresholds independent.
+      const key = isWhaleKolRoom ? `${room}\0${tx}` : tx;
+      if (this.transactions.has(key)) {
+        return undefined;
+      }
+      this.transactions.add(key);
+    }
+    return data;
+  }
+
+  /**
    * Handles messages from worker
    */
   private handleWorkerMessage(data: any): void {
     const { room, message } = data;
 
-    // Deduplicate transactions
-    if (message?.tx && this.transactions.has(message.tx)) {
+    const emitPayload = this.dedupeTransactionPayload(room, message);
+    if (emitPayload === undefined) {
       return;
-    } else if (message?.tx) {
-      this.transactions.add(message.tx);
     }
 
-    this.emit(room, message);
+    this.emit(room, emitPayload);
   }
 
  private getWorkerCode(): string {
@@ -969,7 +1217,6 @@ export class Datastream extends EventEmitter {
     let config = {};
     let reconnectAttempts = 0;
     let subscribedRooms = new Set();
-    let transactions = new Set();
 
     self.addEventListener('message', (event) => {
       const { type, data } = event.data;
@@ -1039,6 +1286,12 @@ export class Datastream extends EventEmitter {
       socket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
+          if (message.type === 'ping') {
+            if (socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: 'pong' }));
+            }
+            return;
+          }
           if (message.type === 'message') {
             // Handle primary pool routing
             
@@ -1081,7 +1334,6 @@ export class Datastream extends EventEmitter {
         transactionSocket = null;
       }
       subscribedRooms.clear();
-      transactions.clear();
       self.postMessage({ type: 'disconnected', socketType: 'all' });
     }
 
@@ -1183,16 +1435,18 @@ export class Datastream extends EventEmitter {
     socket.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
-        if (message.type === 'message') {
-          // Deduplicate transactions
-          if (message.data?.tx && this.transactions.has(message.data.tx)) {
-            return;
-          } else if (message.data?.tx) {
-            this.transactions.add(message.data.tx);
+        if (message.type === 'ping') {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'pong' }));
           }
-
-
-          this.emit(message.room, message.data);
+          return;
+        }
+        if (message.type === 'message') {
+          const emitPayload = this.dedupeTransactionPayload(message.room, message.data);
+          if (emitPayload === undefined) {
+            return;
+          }
+          this.emit(message.room, emitPayload);
         }
       } catch (error) {
         this.emit('error', new Error(`Error processing message: ${error}`));
@@ -1449,6 +1703,33 @@ export interface TokenTransaction {
       marketCap?: { usd: number };
       [key: string]: any;
     };
+  };
+}
+
+/** Token side on whale/KOL rooms, where metadata can be absent or null. */
+export interface WhaleKolTransactionTokenSide {
+  name?: string | null;
+  symbol?: string | null;
+  image?: string | null;
+  decimals?: number;
+  amount: number;
+  address: string;
+  price?: { usd: number | null };
+  marketCap?: { usd: number | null };
+  [key: string]: any;
+}
+
+/**
+ * Exact whale/KOL Datastream payload. Kept separate so the legacy
+ * `TokenTransaction` contract remains source-compatible with 0.3.x.
+ */
+export interface WhaleKolTransaction
+  extends Omit<TokenTransaction, 'priceUsd' | 'token'> {
+  priceUsd: number | null;
+  identity?: TradeIdentity;
+  token: {
+    from: WhaleKolTransactionTokenSide;
+    to: WhaleKolTransactionTokenSide;
   };
 }
 

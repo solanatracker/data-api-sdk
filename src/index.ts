@@ -9,6 +9,8 @@ export {
   type DatastreamConfig,
   type PriceUpdate,
   type TokenTransaction,
+  type WhaleKolTransaction,
+  type WhaleKolTransactionTokenSide,
   type PoolUpdate,
   type HolderUpdate,
   type WalletTransaction,
@@ -24,8 +26,20 @@ export {
   type PnlWalletPosition
 } from './datastream';
 
-// Export all interfaces
+// Export Prediction Markets REST client
+export {
+  PredictionMarketsClient,
+  type PredictionMarketsConfig,
+} from './prediction-markets';
+
+// Export all Data API / shared interfaces
 export * from './interfaces';
 
-// Export all interfaces
+// Export Prediction Markets REST types
+export * from './prediction-markets-interfaces';
+
+// Export Prediction Markets Datastream types
+export * from './prediction-markets-stream';
+
+// Export event processor helpers
 export * from './event-processor';
