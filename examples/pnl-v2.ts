@@ -4,6 +4,7 @@
  *
  * PnL v2 is aimed at meme / tradable token positions — not SOL (native or wrapped).
  */
+import { requireEnv } from './config';
 import {
   Client,
   type PnlV2WalletQueued,
@@ -20,7 +21,7 @@ import {
 import { handleError, truncateAddress, formatCurrency, formatPercentage } from './utils';
 
 const client = new Client({
-  apiKey: 'YOUR_API_KEY_HERE',
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY'),
 });
 
 /** Example wallet and meme-token mint — replace with real addresses for your tests */

@@ -12,6 +12,8 @@ import {
   type TokenRisk,
   type TokenTransaction,
   type WhaleKolTransaction,
+  type MarketTradeSummary,
+  type PaginatedMarketTraders,
 } from '../src/index';
 
 describe('public exports', () => {
@@ -493,6 +495,25 @@ describe('PredictionMarketsClient path coverage', () => {
       ok: true,
       json: async () => ({ url }),
     }));
+  });
+
+  it('represents exchange-specific market trader responses', async () => {
+    const summary: MarketTradeSummary = {
+      exchange: 'kalshi', marketId: 'ticker', totalTrades: 2,
+      totalContracts: 10, yesContracts: 6, noContracts: 4,
+    };
+    (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, json: async () => summary });
+    const kalshi: MarketTradeSummary = await pm.getMarketTradersByExchange('ticker', { exchange: 'kalshi' });
+    expect(kalshi).toEqual(summary);
+
+    const page: PaginatedMarketTraders = { data: [], count: 0, hasMore: false, cursor: null };
+    (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, json: async () => page });
+    const poly: PaginatedMarketTraders = await pm.getMarketTradersByExchange('condition', { exchange: 'polymarket' });
+    expect(poly).toEqual(page);
+    expect((global.fetch as jest.Mock).mock.calls.map(([url]) => url)).toEqual([
+      'https://pm.example.test/v1/markets/ticker/traders?exchange=kalshi',
+      'https://pm.example.test/v1/markets/condition/traders?exchange=polymarket',
+    ]);
   });
 
   it('hits remaining high-traffic REST paths', async () => {

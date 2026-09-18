@@ -1,12 +1,13 @@
 /**
  * Stats-related examples for the Solana Tracker API
  */
+import { requireEnv } from './config';
 import { Client, processEventsAsync } from '@solana-tracker/data-api'
 import { handleError } from './utils';
 
 // Initialize the API client with your API key
 const client = new Client({
-  apiKey: 'YOUR_API_KEY',
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY'),
 });
 
 /**
@@ -19,7 +20,7 @@ export async function getTokenDetailedStats(tokenAddress: string) {
     console.log(`\n=== Detailed Stats for ${tokenAddress} ===`);
     
     // Display stats for different timeframes
-    const timeframes = ['1m', '5m', '15m', '1h', '4h', '24h'];
+    const timeframes = ['1m', '5m', '15m', '1h', '4h', '24h'] as const;
     
     timeframes.forEach(timeframe => {
       if (stats[timeframe]) {
@@ -71,7 +72,7 @@ export async function getPoolDetailedStats(tokenAddress: string, poolAddress: st
     console.log(`\n=== Detailed Pool Stats for ${tokenAddress} (Pool: ${poolAddress}) ===`);
     
     // Display stats for different timeframes
-    const timeframes = ['1m', '5m', '15m', '1h', '4h', '24h'];
+    const timeframes = ['1m', '5m', '15m', '1h', '4h', '24h'] as const;
     
     timeframes.forEach(timeframe => {
       if (stats[timeframe]) {
@@ -101,11 +102,11 @@ export async function compareTokenStats(tokenAddress: string) {
     console.log(`\n=== Comparative Analysis for ${tokenAddress} ===`);
     
     // Extract stats from different timeframes
-    const timeframes = ['1h', '4h', '24h'];
-    const availableStats = timeframes.filter(tf => stats[tf]).map(tf => ({
-      timeframe: tf,
-      stats: stats[tf]
-    }));
+    const timeframes = ['1h', '4h', '24h'] as const;
+    const availableStats = timeframes.flatMap(timeframe => {
+      const period = stats[timeframe];
+      return period ? [{ timeframe, stats: period }] : [];
+    });
     
     if (availableStats.length < 2) {
       console.log('Not enough timeframes available for comparison');

@@ -1,11 +1,12 @@
 /**
  * Whale & KOL trades — REST and Datastream examples.
  */
+import { requireEnv } from './config';
 import { Client, Datastream } from '@solana-tracker/data-api';
 import { handleError, truncateAddress } from './utils';
 
 const client = new Client({
-  apiKey: 'YOUR_API_KEY_HERE',
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY'),
 });
 
 const TOKEN = '6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN';
@@ -69,7 +70,7 @@ export async function getKolTradesByTokenExample(tokenMint = TOKEN) {
 }
 
 /** Live whale + KOL Datastream rooms. */
-export async function subscribeWhaleKol(wsUrl = 'YOUR_WS_URL') {
+export async function subscribeWhaleKol(wsUrl = requireEnv('SOLANA_TRACKER_WS_URL')) {
   const ds = new Datastream({ wsUrl });
   await ds.connect();
 

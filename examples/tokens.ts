@@ -1,8 +1,9 @@
+import { requireEnv } from './config';
 import { Client } from '@solana-tracker/data-api'
 import { handleError } from './utils';
 
 const client = new Client({
-  apiKey: process.env.SOLANA_TRACKER_API_KEY || 'YOUR_API_KEY'
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY')
 });
 
 // Get info for a single token
@@ -28,27 +29,6 @@ export async function getTokenInfo() {
 }
 
 
-/**
- * Example 2: Get trending tokens
- */
-export async function getTrendingTokens() {
-  try {
-    const trendingTokens = await client.getTrendingTokens('1h');
-    
-    console.log('\n=== Top 5 Trending Tokens (1h) ===');
-    
-    for (let i = 0; i < Math.min(5, trendingTokens.length); i++) {
-      const token = trendingTokens[i];
-      console.log(`\n${i+1}. ${token.token.name} (${token.token.symbol})`);
-      
-      if (token.pools.length > 0) {
-        const pool = token.pools[0];
-        console.log(`   Price: $${pool.price.usd.toFixed(6)}`);
-        console.log(`   Market Cap: $${(pool.marketCap.usd / 1000000).toFixed(2)}M`);
-        console.log(`   Liquidity: $${(pool.liquidity.usd / 1000).toFixed(2)}k`);
-      }
-      
-      if (token.events['24h']) {
 // Find trending tokens
 export async function getTrendingTokens() {
   try {
@@ -198,7 +178,8 @@ export async function getTokenOverview() {
 // Get tokens by a specific creator/deployer
 export async function getTokensByDeployer(deployer: string) {
   try {
-    const tokens = await client.getTokensByDeployer(deployer);
+    const result = await client.getTokensByDeployer(deployer, { format: 'full' });
+    const tokens = result.tokens;
     
     console.log(`\n🔧 Tokens by ${deployer.slice(0, 8)}...:`);
     console.log(`Found ${tokens.length} tokens`);

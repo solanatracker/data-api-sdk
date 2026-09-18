@@ -4,6 +4,7 @@
  *
  * Use a meme / tradable token mint for `TOKEN` — PnL v2 is not for tracking SOL.
  */
+import { requireEnv } from './config';
 import {
   Datastream,
   type PnlBalanceUpdate,
@@ -13,7 +14,7 @@ import {
   type PnlWalletUpdate,
 } from '@solana-tracker/data-api';
 
-const WS_URL = 'YOUR_WS_URL';
+const WS_URL = requireEnv('SOLANA_TRACKER_WS_URL');
 
 /** Replace with addresses you want to watch */
 const WALLET = 'FbMxP3GVq8TQ36nbYgx4NP9iygMpwAwFWJwW81ioCiSF';

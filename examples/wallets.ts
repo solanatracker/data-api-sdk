@@ -1,8 +1,9 @@
+import { requireEnv } from './config';
 import { Client } from '@solana-tracker/data-api'
 import { handleError } from './utils';
 
 const client = new Client({
-  apiKey: process.env.SOLANA_TRACKER_API_KEY || 'YOUR_API_KEY'
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY')
 });
 
 const EXAMPLE_WALLET = 'FbMxP3GVq8TQ36nbYgx4NP9iygMpwAwFWJwW81ioCiSF';
@@ -78,7 +79,7 @@ export async function getWalletTrades(walletAddress: string = EXAMPLE_WALLET) {
     
     trades.trades.slice(0, 10).forEach((trade, i) => {
       const date = new Date(trade.time).toLocaleTimeString();
-      const type = trade.type ? trade.type.toUpperCase() : 'SWAP';
+      const type = 'SWAP';
       console.log(`${i + 1}. [${date}] ${type} - Tx: ${trade.tx.slice(0, 8)}...`);
     });
     
@@ -95,9 +96,8 @@ export async function getWalletChart(walletAddress: string = EXAMPLE_WALLET) {
     
     console.log('\n📉 Portfolio Performance:');
     if (chart.pnl) {
-      console.log('24h:', chart.pnl['24h'] ? `${chart.pnl['24h'].toFixed(2)}%` : 'N/A');
-      console.log('7d:', chart.pnl['7d'] ? `${chart.pnl['7d'].toFixed(2)}%` : 'N/A');
-      console.log('30d:', chart.pnl['30d'] ? `${chart.pnl['30d'].toFixed(2)}%` : 'N/A');
+      console.log('24h:', chart.pnl['24h'] ? `${chart.pnl['24h'].percentage.toFixed(2)}%` : 'N/A');
+      console.log('30d:', chart.pnl['30d'] ? `${chart.pnl['30d'].percentage.toFixed(2)}%` : 'N/A');
     }
     
     return chart;

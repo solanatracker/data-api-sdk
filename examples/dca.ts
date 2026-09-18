@@ -5,6 +5,7 @@
  * query (default `"jupiter"`) — currently only Jupiter is supported but the
  * shape is forward-compatible.
  */
+import { requireEnv } from './config';
 import {
   Client,
   type DcaOrder,
@@ -13,7 +14,7 @@ import {
 import { handleError, formatCurrency, truncateAddress } from './utils';
 
 const client = new Client({
-  apiKey: 'YOUR_API_KEY_HERE',
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY'),
 });
 
 /** Replace with real addresses for your tests. */

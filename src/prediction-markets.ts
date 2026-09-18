@@ -19,6 +19,7 @@ import type {
   LiveMarketData,
   MarketQuoteResponse,
   MarketSnapshotResponse,
+  MarketTradeSummary,
   MidpointResponse,
   MilestonesResponse,
   OpenInterestResponse,
@@ -483,6 +484,15 @@ export class PredictionMarketsClient {
   async getMarketTraders(ticker: string, params?: PmGetMarketTradersParams): Promise<PaginatedMarketTraders> {
     const qs = params ? this.buildQueryString(params) : '';
     return this.request<PaginatedMarketTraders>(`/v1/markets/${encodeURIComponent(ticker)}/traders${qs}`);
+  }
+
+  /** Exchange-aware return types, including Kalshi aggregate statistics. */
+  async getMarketTradersByExchange(ticker: string, params: PmGetMarketTradersParams & { exchange: 'polymarket' | 'poly' }): Promise<PaginatedMarketTraders>;
+  async getMarketTradersByExchange(ticker: string, params: PmGetMarketTradersParams & { exchange: 'kalshi' }): Promise<MarketTradeSummary>;
+  async getMarketTradersByExchange(ticker: string, params?: PmGetMarketTradersParams): Promise<PaginatedMarketTraders | MarketTradeSummary>;
+  async getMarketTradersByExchange(ticker: string, params?: PmGetMarketTradersParams): Promise<PaginatedMarketTraders | MarketTradeSummary> {
+    const qs = params ? this.buildQueryString(params) : '';
+    return this.request<PaginatedMarketTraders | MarketTradeSummary>(`/v1/markets/${encodeURIComponent(ticker)}/traders${qs}`);
   }
 
   /** Market trade history — `GET /v1/markets/{ticker}/trades` */

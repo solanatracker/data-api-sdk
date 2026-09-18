@@ -1,8 +1,9 @@
+import { requireEnv } from './config';
 import { Client } from '@solana-tracker/data-api';
 import { handleError } from './utils';
 
 const client = new Client({
-  apiKey: process.env.SOLANA_TRACKER_API_KEY || 'YOUR_API_KEY_HERE'
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY')
 });
 
 // Get OHLCV chart data for a token

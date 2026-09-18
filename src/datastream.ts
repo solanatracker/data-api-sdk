@@ -16,7 +16,10 @@ import {
   DcaWithdrawEvent,
   DcaCollectedFeeEvent,
   DcaPositionEvent,
+  PnlV2Identity,
   TradeIdentity,
+  LiquidityUpdate,
+  EnrichedStreamOptions,
   WhaleMinVolume,
 } from './interfaces';
 import {
@@ -209,6 +212,7 @@ class SubscriptionMethods {
   private ds: Datastream;
   public price: PriceSubscriptions;
   public tx: TransactionSubscriptions;
+  public liquidity: LiquiditySubscriptions;
   public stats: StatsSubscriptions;
   public volume: VolumeSubscriptions;
   public pnl: PnlSubscriptions;
@@ -219,6 +223,7 @@ class SubscriptionMethods {
     this.ds = datastream;
     this.price = new PriceSubscriptions(datastream);
     this.tx = new TransactionSubscriptions(datastream);
+    this.liquidity = new LiquiditySubscriptions(datastream);
     this.stats = new StatsSubscriptions(datastream);
     this.volume = new VolumeSubscriptions(datastream);
     this.pnl = new PnlSubscriptions(datastream);
@@ -812,18 +817,18 @@ class PriceSubscriptions {
 /**
  * Wallet transaction subscription methods interface (under .tx namespace)
  */
-interface WalletTransactionSubscriptionMethods {
+interface WalletTransactionSubscriptionMethods<T extends WalletTransaction = WalletTransaction> {
   /**
    * Subscribe to wallet transactions (default)
    */
-  on(callback: (data: WalletTransaction) => void): {
+  on(callback: (data: T) => void): {
     unsubscribe: () => void;
   };
   room: string;
   /**
    * Explicitly subscribe to wallet transactions
    */
-  transactions(): SubscribeResponse<WalletTransaction>;
+  transactions(): SubscribeResponse<T>;
   /**
    * @deprecated Use datastream.subscribe.wallet('address').balance() instead
    * This method will be removed in a future version
@@ -834,6 +839,36 @@ interface WalletTransactionSubscriptionMethods {
    * This method will be removed in a future version
    */
   tokenBalance(tokenAddress: string): SubscribeResponse<WalletBalanceUpdate>;
+}
+
+/** Append the opt-in identity suffix without changing existing room names. */
+function enrichedRoom(room: string, options?: EnrichedStreamOptions): string {
+  return options?.enriched ? `${room}:enriched` : room;
+}
+
+/** Live LP events. Multiple actions may share a signature, pool and wallet. */
+class LiquiditySubscriptions {
+  constructor(private ds: Datastream) {}
+
+  token(mint: string, options?: EnrichedStreamOptions): SubscribeResponse<LiquidityUpdate> {
+    return this.ds._subscribe<LiquidityUpdate>(enrichedRoom(`liquidity:${mint}`, options));
+  }
+
+  tokenPool(mint: string, pool: string, options?: EnrichedStreamOptions): SubscribeResponse<LiquidityUpdate> {
+    return this.ds._subscribe<LiquidityUpdate>(enrichedRoom(`liquidity:${mint}:${pool}`, options));
+  }
+
+  tokenPoolWallet(mint: string, pool: string, wallet: string, options?: EnrichedStreamOptions): SubscribeResponse<LiquidityUpdate> {
+    return this.ds._subscribe<LiquidityUpdate>(enrichedRoom(`liquidity:${mint}:${pool}:${wallet}`, options));
+  }
+
+  pool(pool: string, options?: EnrichedStreamOptions): SubscribeResponse<LiquidityUpdate> {
+    return this.ds._subscribe<LiquidityUpdate>(enrichedRoom(`liquidity:pool:${pool}`, options));
+  }
+
+  wallet(wallet: string, options?: EnrichedStreamOptions): SubscribeResponse<LiquidityUpdate> {
+    return this.ds._subscribe<LiquidityUpdate>(enrichedRoom(`liquidity:wallet:${wallet}`, options));
+  }
 }
 
 /**
@@ -850,8 +885,10 @@ class TransactionSubscriptions {
    * Subscribe to transactions for a token across all pools
    * @param tokenAddress The token address
    */
-  token(tokenAddress: string): SubscribeResponse<TokenTransaction> {
-    return this.ds._subscribe<TokenTransaction>(`transaction:${tokenAddress}`);
+  token(tokenAddress: string, options: EnrichedStreamOptions | undefined): SubscribeResponse<EnrichedTokenTransaction>;
+  token(tokenAddress: string): SubscribeResponse<TokenTransaction>;
+  token(tokenAddress: string, options?: EnrichedStreamOptions): SubscribeResponse<EnrichedTokenTransaction> {
+    return this.ds._subscribe<EnrichedTokenTransaction>(enrichedRoom(`transaction:${tokenAddress}`, options));
   }
 
   /**
@@ -859,12 +896,15 @@ class TransactionSubscriptions {
    * @param tokenAddress The token address
    * @param poolId The pool address
    */
+  pool(tokenAddress: string, poolId: string, options: EnrichedStreamOptions | undefined): SubscribeResponse<EnrichedTokenTransaction>;
+  pool(tokenAddress: string, poolId: string): SubscribeResponse<TokenTransaction>;
   pool(
     tokenAddress: string,
-    poolId: string
-  ): SubscribeResponse<TokenTransaction> {
-    return this.ds._subscribe<TokenTransaction>(
-      `transaction:${tokenAddress}:${poolId}`
+    poolId: string,
+    options?: EnrichedStreamOptions
+  ): SubscribeResponse<EnrichedTokenTransaction> {
+    return this.ds._subscribe<EnrichedTokenTransaction>(
+      enrichedRoom(`transaction:${tokenAddress}:${poolId}`, options)
     );
   }
 
@@ -872,13 +912,16 @@ class TransactionSubscriptions {
    * Subscribe to transactions for a specific token, pool, and wallet
    * Room: `transaction:{tokenAddress}:{poolId}:{walletAddress}`
    */
+  poolWallet(tokenAddress: string, poolId: string, walletAddress: string, options: EnrichedStreamOptions | undefined): SubscribeResponse<EnrichedTokenTransaction>;
+  poolWallet(tokenAddress: string, poolId: string, walletAddress: string): SubscribeResponse<TokenTransaction>;
   poolWallet(
     tokenAddress: string,
     poolId: string,
-    walletAddress: string
-  ): SubscribeResponse<TokenTransaction> {
-    return this.ds._subscribe<TokenTransaction>(
-      `transaction:${tokenAddress}:${poolId}:${walletAddress}`
+    walletAddress: string,
+    options?: EnrichedStreamOptions
+  ): SubscribeResponse<EnrichedTokenTransaction> {
+    return this.ds._subscribe<EnrichedTokenTransaction>(
+      enrichedRoom(`transaction:${tokenAddress}:${poolId}:${walletAddress}`, options)
     );
   }
 
@@ -887,27 +930,31 @@ class TransactionSubscriptions {
    * A trade is published to every room whose tier it meets.
    * @param minVolume USD threshold: `1000` | `2500` | `5000` | `10000`
    */
-  whale(minVolume: WhaleMinVolume = 1000): SubscribeResponse<WhaleKolTransaction> {
+  whale(minVolume: WhaleMinVolume | undefined, options: EnrichedStreamOptions): SubscribeResponse<EnrichedWhaleKolTransaction>;
+  whale(minVolume?: WhaleMinVolume): SubscribeResponse<WhaleKolTransaction>;
+  whale(minVolume: WhaleMinVolume = 1000, options?: EnrichedStreamOptions): SubscribeResponse<EnrichedWhaleKolTransaction> {
     const allowed: WhaleMinVolume[] = [1000, 2500, 5000, 10000];
     if (!allowed.includes(minVolume)) {
       throw new Error(`minVolume must be one of: ${allowed.join(', ')}`);
     }
-    return this.ds._subscribe<WhaleKolTransaction>(`transaction:whale:${minVolume}`);
+    return this.ds._subscribe<WhaleKolTransaction>(enrichedRoom(`transaction:whale:${minVolume}`, options));
   }
 
   /**
    * Subscribe to all KOL roster trades (no $1k floor).
    * Optional volume tier rooms use the same cumulative thresholds as whale rooms.
    */
-  kol(minVolume?: WhaleMinVolume): SubscribeResponse<WhaleKolTransaction> {
+  kol(minVolume: WhaleMinVolume | undefined, options: EnrichedStreamOptions): SubscribeResponse<EnrichedWhaleKolTransaction>;
+  kol(minVolume?: WhaleMinVolume): SubscribeResponse<WhaleKolTransaction>;
+  kol(minVolume?: WhaleMinVolume, options?: EnrichedStreamOptions): SubscribeResponse<EnrichedWhaleKolTransaction> {
     if (minVolume === undefined) {
-      return this.ds._subscribe<WhaleKolTransaction>('transaction:kol');
+      return this.ds._subscribe<WhaleKolTransaction>(enrichedRoom('transaction:kol', options));
     }
     const allowed: WhaleMinVolume[] = [1000, 2500, 5000, 10000];
     if (!allowed.includes(minVolume)) {
       throw new Error(`minVolume must be one of: ${allowed.join(', ')}`);
     }
-    return this.ds._subscribe<WhaleKolTransaction>(`transaction:kol:${minVolume}`);
+    return this.ds._subscribe<WhaleKolTransaction>(enrichedRoom(`transaction:kol:${minVolume}`, options));
   }
 
   /**
@@ -922,23 +969,25 @@ class TransactionSubscriptions {
    * 
    * @param walletAddress The wallet address
    */
-  wallet(walletAddress: string): WalletTransactionSubscriptionMethods {
+  wallet(walletAddress: string, options: EnrichedStreamOptions | undefined): WalletTransactionSubscriptionMethods<EnrichedWalletTransaction>;
+  wallet(walletAddress: string): WalletTransactionSubscriptionMethods;
+  wallet(walletAddress: string, options?: EnrichedStreamOptions): WalletTransactionSubscriptionMethods<EnrichedWalletTransaction> {
     const ds = this.ds;
 
     // Create the base subscription for transactions
-    const baseSubscription = ds._subscribe<WalletTransaction>(`wallet:${walletAddress}`);
+    const baseSubscription = ds._subscribe<EnrichedWalletTransaction>(enrichedRoom(`wallet:${walletAddress}`, options));
 
     return {
       ...baseSubscription,
 
       // Default on method for transactions
-      on: (callback: (data: WalletTransaction) => void) => {
+      on: (callback: (data: EnrichedWalletTransaction) => void) => {
         return baseSubscription.on(callback);
       },
 
       // Explicit transactions method (not deprecated)
       transactions: () => {
-        return ds._subscribe<WalletTransaction>(`wallet:${walletAddress}`);
+        return ds._subscribe<EnrichedWalletTransaction>(enrichedRoom(`wallet:${walletAddress}`, options));
       },
 
       // Deprecated balance methods
@@ -1085,6 +1134,12 @@ export class Datastream extends EventEmitter {
         },
       });
 
+      // The subscription that triggered connect() was queued before the worker
+      // existed. Forward it (and any other queued rooms) to the new worker.
+      for (const room of this.subscribedRooms) {
+        this.worker.postMessage({ type: 'subscribe', data: { room } });
+      }
+
       // Wait for connection
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -1092,7 +1147,6 @@ export class Datastream extends EventEmitter {
         }, 10000);
 
         const handler = (e: MessageEvent<WorkerResponse>) => {
-          console.log('Worker message:', e.data);
           if (e.data.type === 'connected') {
             clearTimeout(timeout);
             this.worker?.removeEventListener('message', handler);
@@ -1157,6 +1211,12 @@ export class Datastream extends EventEmitter {
    * Returns `undefined` when every item was already seen.
    */
   private dedupeTransactionPayload(room: string, data: any): any | undefined {
+    // LP actions have no public event ID; one signature can contain several
+    // additions/removals. Enriched rooms must also remain independent of the
+    // original notification, including delayed/out-of-order identity lookups.
+    if (room.startsWith('liquidity:') || room.endsWith(':enriched')) {
+      return data;
+    }
     const isWhaleKolRoom =
       room.startsWith('transaction:whale:') ||
       room === 'transaction:kol' ||
@@ -1706,6 +1766,12 @@ export interface TokenTransaction {
   };
 }
 
+/** Opt-in identity payload, preserving the legacy TokenTransaction key set. */
+export interface EnrichedTokenTransaction extends TokenTransaction {
+  identity?: PnlV2Identity | null;
+  identityStatus?: 'partial';
+}
+
 /** Token side on whale/KOL rooms, where metadata can be absent or null. */
 export interface WhaleKolTransactionTokenSide {
   name?: string | null;
@@ -1731,6 +1797,12 @@ export interface WhaleKolTransaction
     from: WhaleKolTransactionTokenSide;
     to: WhaleKolTransactionTokenSide;
   };
+}
+
+/** The opt-in :enriched whale/KOL payload can have a null or richer identity. */
+export interface EnrichedWhaleKolTransaction extends Omit<WhaleKolTransaction, 'identity'> {
+  identity?: PnlV2Identity | null;
+  identityStatus?: 'partial';
 }
 
 export interface PriceUpdate {
@@ -1826,6 +1898,12 @@ export interface HolderUpdate {
   total: number;
 }
 
+
+/** Opt-in identity payload, preserving the legacy WalletTransaction key set. */
+export interface EnrichedWalletTransaction extends WalletTransaction {
+  identity?: PnlV2Identity | null;
+  identityStatus?: 'partial';
+}
 
 export interface WalletTransaction {
   tx: string;

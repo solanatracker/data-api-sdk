@@ -3,4 +3,15 @@ dist
 *.log
 *.tgz
 package-lock.json
-package-lock.json
+
+# Local credentials and environment overrides
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local operating-system metadata
+.DS_Store
+tests
+tests/contract.test.ts

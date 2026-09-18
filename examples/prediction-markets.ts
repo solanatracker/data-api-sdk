@@ -3,6 +3,7 @@
  * REST host: https://prediction-market-api.solanatracker.io
  * Datastream: same hub/key as other products (`pm:*` rooms).
  */
+import { requireEnv } from './config';
 import {
   PredictionMarketsClient,
   Datastream,
@@ -11,7 +12,7 @@ import {
 import { handleError } from './utils';
 
 const pm = new PredictionMarketsClient({
-  apiKey: 'YOUR_API_KEY_HERE',
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY'),
 });
 
 /** Browse hub bootstrap + trending markets. */
@@ -72,7 +73,7 @@ export async function predictionWalletOverview(address: string) {
  * Live PM Datastream rooms.
  * Deduplicate at-least-once delivery with `sourceId` or `tradeId`.
  */
-export async function subscribePredictionMarkets(wsUrl = 'YOUR_WS_URL') {
+export async function subscribePredictionMarkets(wsUrl = requireEnv('SOLANA_TRACKER_WS_URL')) {
   const ds = new Datastream({ wsUrl });
   await ds.connect();
 

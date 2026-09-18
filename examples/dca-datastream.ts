@@ -8,6 +8,7 @@
  *
  * Available on Premium, Business, and Enterprise plans.
  */
+import { requireEnv } from './config';
 import {
   Datastream,
   type DcaStreamEvent,
@@ -16,7 +17,7 @@ import {
 } from '@solana-tracker/data-api';
 
 const ds = new Datastream({
-  wsUrl: 'wss://datastream.solanatracker.io/YOUR_API_KEY_HERE',
+  wsUrl: requireEnv('SOLANA_TRACKER_WS_URL'),
 });
 
 ds.connect();

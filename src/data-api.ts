@@ -17,6 +17,12 @@ import {
   MultiPriceResponse,
   WalletBasicResponse,
   TradesResponse,
+  TradeParams,
+  TradeHistoryResponse,
+  TradeEvents,
+  TradeEventFor,
+  TradeEvent,
+  EnrichedTrade,
   WalletResponse,
   ChartResponse,
   HoldersChartResponse,
@@ -240,7 +246,11 @@ export class Client {
     };
 
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      // Match PredictionMarketsClient and the declared Node 14+ support.
+      const fetchImpl: typeof fetch = typeof globalThis.fetch === 'function'
+        ? globalThis.fetch.bind(globalThis)
+        : ((await import('node-fetch')).default as unknown as typeof fetch);
+      const response = await fetchImpl(`${this.baseUrl}${endpoint}`, {
         ...options,
         headers,
       });
@@ -877,6 +887,21 @@ export class Client {
     return this.request<WalletTradesResponse>(`/wallet/${owner}/trades${query}`);
   }
 
+  /** Validate filters for the opt-in activity history methods. */
+  private buildTradeQuery(params: TradeParams = {}): string {
+    if (params.limit !== undefined &&
+        (!Number.isInteger(params.limit) || params.limit < 1 || params.limit > 500)) {
+      throw new ValidationError('limit must be an integer between 1 and 500');
+    }
+    if (params.events !== undefined && !['trades', 'all', 'liquidity'].includes(params.events)) {
+      throw new ValidationError('events must be trades, all, or liquidity');
+    }
+    if (params.sortDirection !== undefined && !['ASC', 'DESC'].includes(params.sortDirection)) {
+      throw new ValidationError('sortDirection must be ASC or DESC');
+    }
+    return this.buildQueryString(params);
+  }
+
   // ======== TRADE ENDPOINTS ========
 
   /**
@@ -1001,6 +1026,114 @@ export class Client {
 
     const query = params.toString() ? `?${params.toString()}` : '';
     return this.request<TradesResponse>(`/trades/${tokenAddress}/by-wallet/${owner}${query}`);
+  }
+
+  /** Opt-in trade/LP history with exact cursors, identity and filtering. */
+  async getTokenTradeHistory<E extends TradeEvents = 'trades'>(
+    tokenAddress: string,
+    params: TradeParams<E>
+  ): Promise<TradeHistoryResponse<TradeEventFor<E>>>;
+  async getTokenTradeHistory(
+    tokenAddress: string,
+    params?: undefined
+  ): Promise<TradeHistoryResponse<EnrichedTrade>>;
+  async getTokenTradeHistory(
+    tokenAddress: string,
+    params: TradeParams | undefined
+  ): Promise<TradeHistoryResponse<TradeEvent>>;
+  async getTokenTradeHistory(
+    tokenAddress: string,
+    params?: TradeParams
+  ): Promise<TradeHistoryResponse<TradeEvent>> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+    const query = this.buildTradeQuery(params);
+    return this.request<TradeHistoryResponse<TradeEvent>>(`/trades/${tokenAddress}${query}`);
+  }
+
+  /** Opt-in trade/LP history with exact cursors, identity and filtering. */
+  async getPoolTradeHistory<E extends TradeEvents = 'trades'>(
+    tokenAddress: string,
+    poolAddress: string,
+    params: TradeParams<E>
+  ): Promise<TradeHistoryResponse<TradeEventFor<E>>>;
+  async getPoolTradeHistory(
+    tokenAddress: string,
+    poolAddress: string,
+    params?: undefined
+  ): Promise<TradeHistoryResponse<EnrichedTrade>>;
+  async getPoolTradeHistory(
+    tokenAddress: string,
+    poolAddress: string,
+    params: TradeParams | undefined
+  ): Promise<TradeHistoryResponse<TradeEvent>>;
+  async getPoolTradeHistory(
+    tokenAddress: string,
+    poolAddress: string,
+    params?: TradeParams
+  ): Promise<TradeHistoryResponse<TradeEvent>> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+    this.validatePublicKey(poolAddress, 'poolAddress');
+    const query = this.buildTradeQuery(params);
+    return this.request<TradeHistoryResponse<TradeEvent>>(`/trades/${tokenAddress}/${poolAddress}${query}`);
+  }
+
+  /** Opt-in trade/LP history with exact cursors, identity and filtering. */
+  async getUserPoolTradeHistory<E extends TradeEvents = 'trades'>(
+    tokenAddress: string,
+    poolAddress: string,
+    owner: string,
+    params: TradeParams<E>
+  ): Promise<TradeHistoryResponse<TradeEventFor<E>>>;
+  async getUserPoolTradeHistory(
+    tokenAddress: string,
+    poolAddress: string,
+    owner: string,
+    params?: undefined
+  ): Promise<TradeHistoryResponse<EnrichedTrade>>;
+  async getUserPoolTradeHistory(
+    tokenAddress: string,
+    poolAddress: string,
+    owner: string,
+    params: TradeParams | undefined
+  ): Promise<TradeHistoryResponse<TradeEvent>>;
+  async getUserPoolTradeHistory(
+    tokenAddress: string,
+    poolAddress: string,
+    owner: string,
+    params?: TradeParams
+  ): Promise<TradeHistoryResponse<TradeEvent>> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+    this.validatePublicKey(poolAddress, 'poolAddress');
+    this.validatePublicKey(owner, 'owner');
+    const query = this.buildTradeQuery(params);
+    return this.request<TradeHistoryResponse<TradeEvent>>(`/trades/${tokenAddress}/${poolAddress}/${owner}${query}`);
+  }
+
+  /** Opt-in trade/LP history with exact cursors, identity and filtering. */
+  async getUserTokenTradeHistory<E extends TradeEvents = 'trades'>(
+    tokenAddress: string,
+    owner: string,
+    params: TradeParams<E>
+  ): Promise<TradeHistoryResponse<TradeEventFor<E>>>;
+  async getUserTokenTradeHistory(
+    tokenAddress: string,
+    owner: string,
+    params?: undefined
+  ): Promise<TradeHistoryResponse<EnrichedTrade>>;
+  async getUserTokenTradeHistory(
+    tokenAddress: string,
+    owner: string,
+    params: TradeParams | undefined
+  ): Promise<TradeHistoryResponse<TradeEvent>>;
+  async getUserTokenTradeHistory(
+    tokenAddress: string,
+    owner: string,
+    params?: TradeParams
+  ): Promise<TradeHistoryResponse<TradeEvent>> {
+    this.validatePublicKey(tokenAddress, 'tokenAddress');
+    this.validatePublicKey(owner, 'owner');
+    const query = this.buildTradeQuery(params);
+    return this.request<TradeHistoryResponse<TradeEvent>>(`/trades/${tokenAddress}/by-wallet/${owner}${query}`);
   }
 
   // ======== CHART DATA ENDPOINTS ========

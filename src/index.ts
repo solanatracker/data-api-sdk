@@ -1,6 +1,12 @@
 // Export main class and interfaces
 export { Client, DataApiError, RateLimitError, ValidationError } from './data-api';
-export type { DataApiConfig } from './data-api';
+export type {
+  DataApiConfig,
+  RequestOptions,
+  TokenOverviewParams,
+  GraduatedTokensParams,
+  GraduatingTokensParams,
+} from './data-api';
 
 // Export Datastream for real-time updates
 export { 
@@ -9,11 +15,14 @@ export {
   type DatastreamConfig,
   type PriceUpdate,
   type TokenTransaction,
+  type EnrichedTokenTransaction,
   type WhaleKolTransaction,
+  type EnrichedWhaleKolTransaction,
   type WhaleKolTransactionTokenSide,
   type PoolUpdate,
   type HolderUpdate,
   type WalletTransaction,
+  type EnrichedWalletTransaction,
   type TokenMetadata,
   type BundlerUpdate,
   type VolumePoolUpdate,

@@ -1,9 +1,10 @@
 // examples/datastream.ts
+import { requireEnv } from './config';
 import { Datastream } from '@solana-tracker/data-api';
 
 // Initialize the Datastream with configuration
 const dataStream = new Datastream({
-  wsUrl: 'YOUR_WS_URL', // Get this from your Solana Tracker Dashboard
+  wsUrl: requireEnv('SOLANA_TRACKER_WS_URL'), // Get this from your Solana Tracker Dashboard
   autoReconnect: true, // Auto reconnect on disconnect (default: true)
   reconnectDelay: 2500, // Initial reconnect delay in ms (default: 2500)
   reconnectDelayMax: 4500, // Maximum reconnect delay in ms (default: 4500)

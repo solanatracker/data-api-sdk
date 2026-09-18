@@ -1,13 +1,14 @@
 /**
  * Profit and Loss (PnL) examples for the Solana Tracker API
  */
+import { requireEnv } from './config';
 import { Client } from '@solana-tracker/data-api';
 import { handleError } from './utils';
 
 
 // Initialize the API client with your API key
 const client = new Client({
-  apiKey: 'YOUR_API_KEY_HERE'
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY')
 });
 
 // Replace with a real wallet address for testing

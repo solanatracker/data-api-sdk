@@ -1,12 +1,13 @@
+import { requireEnv } from './config';
 import { Client, Datastream, BundlerUpdate } from '@solana-tracker/data-api';
 import { handleError } from './utils';
 
 const client = new Client({
-  apiKey: process.env.SOLANA_TRACKER_API_KEY || 'YOUR_API_KEY_HERE'
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY')
 });
 
 const dataStream = new Datastream({
-  wsUrl: 'YOUR_WS_URL', // Get this from your Solana Tracker Dashboard
+  wsUrl: requireEnv('SOLANA_TRACKER_WS_URL'), // Get this from your Solana Tracker Dashboard
   autoReconnect: true,
 });
 

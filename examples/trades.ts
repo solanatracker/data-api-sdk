@@ -1,12 +1,13 @@
 /**
  * Trade-related examples for the Solana Tracker API
  */
-import { Client } from '@solana-tracker/data-api';
+import { requireEnv } from './config';
+import { Client, type TradesResponse } from '@solana-tracker/data-api';
 import { handleError } from './utils';
 
 // Initialize the API client with your API key
 const client = new Client({
-  apiKey: 'YOUR_API_KEY_HERE'
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY')
 });
 
 /**
@@ -160,11 +161,11 @@ export async function analyzeTokenTradingActivity(tokenAddress: string) {
     
     // Fetch up to 3 pages of trades (adjust as needed)
     for (let i = 0; i < 3 && hasMore; i++) {
-      const trades = await client.getTokenTrades(tokenAddress, cursor);
+      const trades: TradesResponse = await client.getTokenTrades(tokenAddress, cursor);
       allTrades = allTrades.concat(trades.trades);
       
-      hasMore = trades.hasNextPage || false;
-      cursor = trades.nextCursor;
+      hasMore = Boolean(trades.hasNextPage && trades.nextCursor != null);
+      cursor = trades.nextCursor ?? undefined;
       
       // Avoid rate limits
       if (hasMore) await new Promise(resolve => setTimeout(resolve, 500));

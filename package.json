@@ -1,6 +1,6 @@
 {
     "name": "@solana-tracker/data-api",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "description": "Official Solana Tracker Data API client for accessing Solana Data",
     "main": "dist/index.js",
     "module": "dist/index.mjs",
@@ -15,7 +15,13 @@
     "scripts": {
         "build": "tsup src/index.ts src/data-api.ts src/interfaces.ts --format esm,cjs --dts --clean --external ws",
         "test": "jest",
+        "test:compatibility": "node tests/compatibility.cjs",
+        "test:compatibility:legacy": "node tests/compatibility.cjs 0.3.1 && node tests/compatibility.cjs 42f931d",
+        "test:package": "npm run build && node tests/package-smoke.cjs",
+        "test:live": "npm run build && node tests/live-api.cjs",
+        "test:live:stream": "npm run build && node tests/live-stream.cjs",
         "typecheck": "tsc --noEmit",
+        "typecheck:examples": "tsc -p tsconfig.examples.json",
         "prepublishOnly": "npm run build"
     },
     "keywords": [
@@ -64,6 +70,7 @@
     "files": [
         "dist/**/*",
         "README.md",
+        "CHANGELOG.md",
         "LICENSE"
     ],
     "directories": {

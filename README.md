@@ -1,2001 +1,332 @@
-# Solana Tracker - Data API SDK
+# Solana Tracker Data API SDK
 
-Official JavaScript/TypeScript client for the [Solana Tracker Data API](https://www.solanatracker.io/data-api).
+JavaScript and TypeScript clients for Solana token data, prices, wallets, trades, liquidity, and real-time activity. Includes PnL analytics, Jupiter DCA data, and a separate read-only client for Kalshi and Polymarket.
 
-[![npm version](https://badge.fury.io/js/@solana-tracker%2Fdata-api.svg)](https://badge.fury.io/js/@solana-tracker%2Fdata-api)
+[API documentation](https://docs.solanatracker.io/) · [Get an API key](https://www.solanatracker.io/account/data-api) · [Examples](./examples/) · [Report an issue](https://github.com/solanatracker/data-api-sdk/issues)
 
-## Features (Summary)
+Version **0.5.0** adds trade/liquidity history, enriched live activity, and compatibility fixes. See the [release notes](./CHANGELOG.md).
 
-- Full TypeScript support with detailed interfaces for all API responses
-- **Lighthouse**: `GET /lighthouse` — live buys/sells/traders/volume/launches/migrations across Solana memecoin markets (`5m`/`1h`/`6h`/`24h` with period-over-period change)
-- **Whale & KOL trades**: REST (`/trades/whales`, `/trades/kols`, `/trades/kols/{token}`) and Datastream rooms (`transaction:whale:{volume}`, `transaction:kol`, `transaction:kol:{volume}`) with optional KOL `identity`
-- **Prediction Markets (Beta)**: dedicated `PredictionMarketsClient` for Kalshi + Polymarket REST (`https://prediction-market-api.solanatracker.io`) plus Datastream `subscribe.pm.*` helpers for all `pm:*` rooms
-- **Contract corrections**: `PriceData.priceQuote` + timeframe `priceChanges`; risk category wallets use `wallet` (not `address`); Datastream JSON `ping` → `pong`
-- **PnL v2**: REST endpoints under `/v2/pnl` (leaderboards, token traders, wallet analytics, wallet-summary batch, batch positions) and Datastream rooms `pnl:{wallet}`, `pnl:{wallet}:{token}`, `pnl:{wallet}:summary` — scoped to meme / tradable tokens, not SOL. Includes `pnlMode` (strict/adjusted/raw), `currency` (`usd`/`sol`/`eur`) on wallet overview/history/performance, unified wallet identity (KOL, bot, pool, developer, hacker, spam-dusting, exchange, SNS primary `.sol` domain, platform tags), always-on token enrichment, opt-in holder enrichment, full position rows on `wallet/positions` and `tokens/:mint/traders`, and `summary.timing.avgHoldTimeSecs` on the wallet overview
-- **Jupiter DCA**: REST endpoints under `/dca/*` (programs, wallet orders, single order, token flow/buyers/sellers/users, trading pair) and Datastream rooms `dca:jupiter[:event][:scope]` for opened, filled, closed, deposit, withdraw, collected_fee, and live position snapshots — scoped per token, wallet, or DCA account (includes V2 `openDcaV2` orders)
-- Comprehensive coverage of all Solana Tracker Data API endpoints
-- Real-time data streaming via WebSocket (Datastream) with JSON ping/pong heartbeat handling
-- Built-in error handling with specific error types
-- Compatible with both Node.js and browser environments
-- Enhanced search with 60+ filter parameters including holder distribution, social media, fees, Coin Communities chat activity, and more
-- Cursor-based pagination for efficient deep searches
-- Top performers endpoint - get the best performing tokens launched today
-- Token filtering for overview endpoints (Memescope / Pulse overview) (graduated, graduating, latest)
-- Paginated token holders endpoint for efficient holder data retrieval (5000 per page limit)
-- Aggregated price updates across all pools for a token via WebSocket (min, median, max, average, top pools setc.)
-- Smart primary pool routing - automatically switches to new main pool (price-by-token, token:{token}:primary rooms)
-- (Global Fees) Platform and network fees tracking via WebSocket and API
-- Developer/creator holdings tracking via WebSocket
-- Top 10 holders monitoring with real-time percentage updates
-- Live stats subscriptions for tokens and pools
-- Primary pool subscriptions for token updates
-- Wallet balance subscription API
-- Snipers and insiders tracking via WebSocket
-- Support for all pool types including launchpad and meteora curve pools (Shows which platform token is released on, Moonshot, Bonk, Jupiter Studio etc)
+## Contents
 
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Trades and liquidity](#trades-and-liquidity)
+- [Real-time streams](#real-time-streams)
+- [API and examples](#api-and-examples)
+- [Prediction markets](#prediction-markets)
+- [Errors](#errors)
+- [Compatibility](#compatibility)
+- [Development](#development)
 
 ## Installation
 
-Install the package using npm:
-
-```bash
+```sh
 npm install @solana-tracker/data-api
 ```
 
-Or with yarn:
+The package includes TypeScript declarations, ES modules, and CommonJS exports. Use a supported Node.js LTS release. If you omit optional dependencies and your runtime has no native `WebSocket`, install `ws` to use Datastream.
 
-```bash
-yarn add @solana-tracker/data-api
+```js
+// CommonJS
+const { Client, Datastream } = require('@solana-tracker/data-api');
 ```
 
-### 0.4 type corrections
+Create an API key in your [dashboard](https://www.solanatracker.io/account/data-api). For streaming, use the full WebSocket URL provided there. Endpoint and Datastream access depend on your subscription; check the dashboard for current plans and limits.
 
-The 0.4 contract sync corrects several previously inaccurate public types:
+Keep `SOLANA_TRACKER_API_KEY` and `SOLANA_TRACKER_WS_URL` in your server's environment or secret manager. The WebSocket URL contains a credential. Never commit either value or include it in browser bundles, screenshots, or logs. [`.env.example`](./.env.example) lists the variables; the SDK does not load environment files automatically.
 
-- Risk entries expose the wire field `wallet`; deprecated `address` remains as
-  an SDK-normalized alias for 0.3.x consumers.
-- An omitted wire `TokenRisk.bundlers` is normalized to an empty category.
-- New whale/KOL rooms use `WhaleKolTransaction`, whose `priceUsd` can be null;
-  the existing `TokenTransaction` type remains unchanged.
+## Quick start
 
-New code should use `wallet` and the exact whale/KOL payload type.
-
-## Quick Start
+This Node.js example reads a token and its current price:
 
 ```typescript
 import { Client } from '@solana-tracker/data-api';
 
-// Initialize the client with your API key
-const client = new Client({
-  apiKey: 'YOUR_API_KEY',
+const apiKey = process.env.SOLANA_TRACKER_API_KEY;
+if (!apiKey) throw new Error('Set SOLANA_TRACKER_API_KEY');
+
+const client = new Client({ apiKey });
+const mint = '6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN';
+
+async function main() {
+  const [token, price] = await Promise.all([
+    client.getTokenInfo(mint),
+    client.getPrice(mint),
+  ]);
+
+  console.log(token.token.name, price.price);
+}
+
+main().catch(() => {
+  console.error('Unable to load token data');
+  process.exitCode = 1;
 });
-
-// Fetch token information
-const fetchTokenInfo = async () => {
-  try {
-    const tokenInfo = await client.getTokenInfo(
-      '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R'
-    );
-    console.log('Token info:', tokenInfo);
-  } catch (error) {
-    console.error('Error:', error);
-  }
-};
-
-fetchTokenInfo();
 ```
 
-## Examples
+`Client` defaults to `https://data.solanatracker.io`. Set `baseUrl` in the constructor when using another authorized Data API host. The client sends the API key to that host in the `x-api-key` header.
 
-Runnable samples live in the [`examples/`](examples/) folder. Copy a file, set your API key or WebSocket URL, and run with `npx ts-node` (or compile with TypeScript) after installing the package.
+The following REST snippets reuse `client` and `mint` from this setup inside an async function.
 
-| File | What it demonstrates |
-|------|----------------------|
-| [`examples/tokens.ts`](examples/tokens.ts) | Token info, holders, trending, search |
-| [`examples/prices.ts`](examples/prices.ts) | Price and multi-price endpoints |
-| [`examples/wallets.ts`](examples/wallets.ts) | Wallet balances and portfolio |
-| [`examples/trades.ts`](examples/trades.ts) | Token and pool trades |
-| [`examples/charts.ts`](examples/charts.ts) | OHLCV and holder/snipers charts |
-| [`examples/stats.ts`](examples/stats.ts) | Token and pool stats |
-| [`examples/bundlers.ts`](examples/bundlers.ts) | Bundler-related API usage |
-| [`examples/profit-loss.ts`](examples/profit-loss.ts) | **Legacy** PnL endpoints (`getWalletPnL`, `getTokenPnL`, first buyers, top traders) |
-| [`examples/pnl-v2.ts`](examples/pnl-v2.ts) | **PnL v2 REST**: leaderboards, token traders, wallet overview/history/performance/risk/chart, wallet-summary batch, batch positions (examples use a meme mint, not SOL) |
-| [`examples/pnl-v2-datastream.ts`](examples/pnl-v2-datastream.ts) | **PnL v2 Datastream**: `subscribe.pnl.position`, `.wallet`, `.summary` with `tradeUpdate`, `balanceUpdate`, `priceUpdate`, and wallet summary payloads |
-| [`examples/dca.ts`](examples/dca.ts) | **Jupiter DCA REST**: `getDcaPrograms`, wallet/orders, single order, token flow/buyers/sellers/users, pair |
-| [`examples/dca-datastream.ts`](examples/dca-datastream.ts) | **Jupiter DCA Datastream**: `subscribe.dca.all`, `.opened`, `.filled`, `.closed`, `.deposit`, `.withdraw`, `.collectedFee`, `.position`, `.token().buyers()/sellers()`, `.wallet`, `.order` |
-| [`examples/lighthouse.ts`](examples/lighthouse.ts) | **Lighthouse**: `getLighthouse()` market activity overview |
-| [`examples/whale-kol.ts`](examples/whale-kol.ts) | **Whale & KOL**: REST feeds + `subscribe.tx.whale` / `.kol` rooms |
-| [`examples/prediction-markets.ts`](examples/prediction-markets.ts) | **Prediction Markets (Beta)**: `PredictionMarketsClient` REST + `subscribe.pm.*` rooms |
-| [`examples/datastream.ts`](examples/datastream.ts) | WebSocket subscriptions (prices, txs, stats, volume, etc.) |
-| [`examples/utils.ts`](examples/utils.ts) | Shared helpers (`handleError`, formatting) |
+## Trades and liquidity
 
-## What's New
+Use the history methods to retrieve swaps, liquidity additions and removals, or both in one ordered feed:
 
-### Version Updates
+```typescript
+const filters = {
+  events: 'all',
+  enrich: 'identity',
+  limit: 100,
+  sortDirection: 'DESC',
+} as const;
 
-#### Latest Features:
+const page = await client.getTokenTradeHistory(mint, filters);
 
-1. **Multiple Markets & Launchpads**: `market` and `launchpad` now accept comma-separated values or arrays on both `/search` and `/deployer`:
-   ```typescript
-   // Search across multiple markets
-   const results = await client.searchTokens({
-     market: ['raydium', 'orca', 'pumpfun'],
-     launchpad: ['pumpfun', 'boop'],
-     minLiquidity: 10000,
-   });
+for (const event of page.trades) {
+  switch (event.type) {
+    case 'buy':
+    case 'sell':
+      console.log(event.type, event.amount, event.priceUsd);
+      break;
+    case 'add_liquidity':
+    case 'remove_liquidity':
+      console.log(event.type, event.pool, event.tokens);
+      break;
+  }
+}
 
-   // Filter deployer tokens by market and launchpad
-   const deployerTokens = await client.getTokensByDeployer('walletAddress', {
-     market: ['raydium', 'pumpfun'],
-     launchpad: 'pumpfun',
-   });
-   ```
+if (page.hasNextPage && page.nextCursor != null) {
+  const nextPage = await client.getTokenTradeHistory(mint, {
+    ...filters,
+    cursor: page.nextCursor,
+  });
+  console.log(nextPage.trades.length);
+}
+```
 
-2. **Full Token Format**: `format=full` returns results as full token objects (same shape as `/tokens/:token`) on both `/search` and `/deployer`:
-   ```typescript
-   // Search with full token details (max limit: 100)
-   const fullResults = await client.searchTokens({
-     query: 'TRUMP',
-     format: 'full',
-     limit: 50,
-   });
-   // fullResults.data items are TokenDetailResponse objects (token, pools, events, risk, etc.)
+### Scope and filters
 
-   // Deployer tokens with full details
-   const fullDeployer = await client.getTokensByDeployer('walletAddress', {
-     format: 'full',
-     limit: 50,
-   });
-   ```
+All four methods accept the same options:
 
-3. **Deployer Endpoint Enhancements**: The `/deployer` endpoint now supports `launchpad`, `market`, and `format` filters via a params object (backward compatible with positional args).
+- `getTokenTradeHistory(mint, options)` — activity across a token's pools.
+- `getPoolTradeHistory(mint, pool, options)` — activity in one pool.
+- `getUserTokenTradeHistory(mint, wallet, options)` — one wallet's token activity.
+- `getUserPoolTradeHistory(mint, pool, wallet, options)` — one wallet in one pool.
 
-4. **Pool Creation Data**: New and graduated pool messages now include `creation` data (creator, created_tx, created_time) inside the pool object.
+Set `events` to `'trades'` (the default), `'liquidity'`, or `'all'`. The result always uses a `trades` array, with TypeScript inferring the row type from the selected mode. `limit` accepts 1–500 rows and defaults to 250; `sortDirection` accepts `'ASC'` or `'DESC'` and defaults to descending.
 
-5. **Top Performers Endpoint**: Get the best performing tokens launched today:
-   ```typescript
-   const topPerformers = await client.getTopPerformers('1h');
-   // Valid timeframes: '5m', '15m', '30m', '1h', '6h', '12h', '24h'
-   console.log('Top performers:', topPerformers.map(t => t.token.symbol));
-   ```
+`enrich: 'identity'` adds current wallet labels, such as KOL profiles, developer labels, pool identities, platforms, and SNS names. Unknown identities are `null`. The aliases `'all'`, `'*'`, `'pool'`, and `'developer'` also enable identity enrichment. `showMeta` adds swap metadata; `hideArb` filters swap legs while retaining LP activity. These options apply to the four history methods, not wallet-wide or whale/KOL REST feeds.
 
-2. **Enhanced Token Overview with Advanced Filtering**: 
-   - Filter latest, graduating, and graduated tokens by liquidity, market cap, risk score, and specific markets
-   - Support for spam reduction and holder count filtering
-   - Backward compatible with simple limit parameter
+### Cursors and exact amounts
 
-2. **Paginated Token Holders**:
-   - Efficient pagination through large holder lists
-   - Support for up to 5000 holders per request
-   - Cursor-based navigation for seamless data retrieval
+Mixed and liquidity feeds use opaque string cursors; swaps use timestamp cursors. Pass `nextCursor` back unchanged and keep the same scope, event mode, and sort direction. A final cursor can be `null`.
 
-3. **Aggregated Price Updates (WebSocket)**:
-   - Get accurate price data aggregated across all pools
-   - Median, average, min, and max prices
-   - Top pools by liquidity automatically identified
-   - Replaces deprecated `price.token()` method
+Liquidity rows contain `pool`, `program`, `programId`, `instruction`, `slot`, `time` in milliseconds, `amountBasis`, and `tokens[]`. Each token's `amount` and `amountRaw` are **strings**: preserve them to avoid precision loss. Optional `feeAmountRaw` and `transferredAmountRaw` preserve transfer details. `amountBasis: 'transfer'` describes gross transfers before Token-2022 withholding; `'principal'` separates principal from fees or internal reallocations. LP rows have no swap price, volume, or PnL fields.
 
-4. **Smart Primary Pool Routing**:
-   - Automatic switching to new primary pools when liquidity migrates
-   - Works for both `token:primary` and `price-by-token` subscriptions
-   - No code changes needed - happens automatically
+See the [liquidity example](./examples/liquidity.ts) and [API liquidity guide](https://docs.solanatracker.io/guides/liquidity) for the complete workflow.
 
-5. **Enhanced Search with 60+ Filters**: 
-   - Holder distribution filters (top10, dev, insiders, snipers)
-   - Social media filters (twitter, telegram, discord, etc.)
-   - Fees filters (total fees, trading fees, priority tips)
-   - Volume filters across multiple timeframes
-   - Token characteristic filters (LP burn, authorities, curve percentage)
-   - Cursor-based pagination for efficient deep searches
+## Real-time streams
 
-6. **Live Stats Subscriptions**: Subscribe to real-time statistics for tokens and pools across all timeframes (1m, 5m, 15m, 30m, 1h, 4h, 24h) using `.stats.token()` and `.stats.pool()` methods
-
-7. **Total Stats Rooms**: Subscribe to direct total stats objects with `.stats.total.token()` and `.stats.total.pool()`
-
-8. **Volume Rooms**: Subscribe to high-frequency USD volume aggregation via `.volume.pool()` and `.volume.token()`
-
-9. **Developer Holdings Tracking**: Monitor developer/creator wallet holdings in real-time with `.dev.holding()` method
-
-10. **Top 10 Holders Monitoring**: Track the top 10 holders and their combined percentage of token supply with `.top10()` method
-
-11. **Global Fees Tracking**: Monitor platform and network fees via WebSocket and API
-
-
-## Real-Time Data Streaming (Premium plan or higher only)
-
-The library includes a `Datastream` class for real-time data updates with an improved, intuitive API:
+`Datastream` provides typed subscriptions, JSON heartbeat replies, and automatic reconnection. Subscribing starts the connection; you can also call `connect()` explicitly.
 
 ```typescript
 import { Datastream } from '@solana-tracker/data-api';
 
-// Initialize the Datastream with your API key
-const dataStream = new Datastream({
-  wsUrl: 'YOUR_WS_URL',
+const wsUrl = process.env.SOLANA_TRACKER_WS_URL;
+if (!wsUrl) throw new Error('Set SOLANA_TRACKER_WS_URL');
+
+const stream = new Datastream({ wsUrl, autoReconnect: false });
+const mint = '6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN';
+
+// Avoid logging connection errors verbatim: they can contain a private URL.
+stream.on('error', () => console.error('Datastream connection error'));
+
+const swaps = stream.subscribe.tx.token(mint, { enriched: true });
+const liquidity = stream.subscribe.liquidity.token(mint, { enriched: true });
+
+const swapListener = swaps.on((event) => {
+  console.log(event.type, event.amount, event.identity);
+});
+const liquidityListener = liquidity.on((event) => {
+  console.log(event.type, event.tokens, event.identity);
 });
 
-// Connect to the WebSocket server
-dataStream.connect();
-
-// Handle connection events
-dataStream.on('connected', () => console.log('Connected to datastream'));
-dataStream.on('disconnected', () =>
-  console.log('Disconnected from datastream')
-);
-dataStream.on('error', (error) => console.error('Datastream error:', error));
-
-// Example 1: Subscribe to latest tokens with chained listener
-dataStream.subscribe.latest().on((tokenData) => {
-  console.log('New token created:', tokenData.token.name);
-});
-
-// Example 2: NEW - Get accurate aggregated price across all pools
-const tokenAddress = '6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN'; // TRUMP token
-dataStream.subscribe.price.aggregated(tokenAddress).on((priceData) => {
-  console.log(`Aggregated price: $${priceData.aggregated.median}`);
-  console.log(`Price range: $${priceData.aggregated.min} - $${priceData.aggregated.max}`);
-  console.log(`Active pools: ${priceData.aggregated.poolCount}`);
-  console.log('Top pools by liquidity:', priceData.topPools);
-});
-
-// Example 3: Subscribe to primary pool updates (automatically switches to new main pool)
-dataStream.subscribe.token(tokenAddress).primary().on((poolUpdate) => {
-  console.log('Primary pool update (automatically switches to new main pool):');
-  console.log(`Price: $${poolUpdate.price.usd}`);
-  console.log(`Liquidity: $${poolUpdate.liquidity.usd}`);
-  console.log(`Pool: ${poolUpdate.poolId}`);
-});
-
-// Example 4: Subscribe to token transactions with stored subscription reference
-const txSubscription = dataStream.subscribe.tx
-  .token(tokenAddress)
-  .on((transaction) => {
-    console.log(`Transaction type: ${transaction.type}`);
-    console.log(`Amount: ${transaction.amount}`);
-    console.log(`Price: $${transaction.priceUsd}`);
-  });
-
-// Later, unsubscribe from transactions
-txSubscription.unsubscribe();
-
-// Example 5: Monitor holder count for a token
-dataStream.subscribe.holders(tokenAddress).on((holderData) => {
-  console.log(`Total holders: ${holderData.total}`);
-});
-
-// Example 6: Watch for wallet transactions
-const walletAddress = 'YourWalletAddressHere';
-dataStream.subscribe.tx.wallet(walletAddress).on((walletTx) => {
-  console.log(`${walletTx.type === 'buy' ? 'Bought' : 'Sold'} token`);
-  console.log(`Volume: ${walletTx.volume} USD`);
-});
-
-// Example 7: Subscribe to curve percentage updates
-dataStream.subscribe.curvePercentage('pumpfun', 30).on((data) => {
-  console.log(`Token ${data.token.symbol} reached 30% on Pump.fun`);
-  console.log(`Market cap: ${data.pools[0].marketCap.usd}`);
-});
-
-// Different markets and percentages
-dataStream.subscribe.curvePercentage('meteora-curve', 75).on((data) => {
-  console.log(`Meteora token at 75%: ${data.token.name}`);
-});
-
-// Example 8: NEW - Monitor snipers for a token
-dataStream.subscribe.snipers(tokenAddress).on((sniperUpdate) => {
-  console.log(`Sniper wallet: ${sniperUpdate.wallet}`);
-  console.log(`Token amount: ${sniperUpdate.tokenAmount.toLocaleString()}`);
-  console.log(`Percentage: ${sniperUpdate.percentage.toFixed(2)}%`);
-  console.log(
-    `Total snipers hold: ${sniperUpdate.totalSniperPercentage.toFixed(2)}%`
-  );
-});
-
-// Example 9: NEW - Monitor insiders for a token
-dataStream.subscribe.insiders(tokenAddress).on((insiderUpdate) => {
-  console.log(`Insider wallet: ${insiderUpdate.wallet}`);
-  console.log(`Token amount: ${insiderUpdate.tokenAmount.toLocaleString()}`);
-  console.log(`Percentage: ${insiderUpdate.percentage.toFixed(2)}%`);
-  console.log(
-    `Total insiders hold: ${insiderUpdate.totalInsiderPercentage.toFixed(2)}%`
-  );
-});
-
-// Example 10: NEW - Monitor wallet balance changes (new API location)
-const walletAddress = 'YourWalletAddressHere';
-
-// Watch all token balance changes for a wallet
-dataStream.subscribe
-  .wallet(walletAddress)
-  .balance()
-  .on((balanceUpdate) => {
-    console.log(`Balance update for wallet ${balanceUpdate.wallet}`);
-    console.log(`Token: ${balanceUpdate.token}`);
-    console.log(`New balance: ${balanceUpdate.amount}`);
-  });
-
-// Watch specific token balance for a wallet
-dataStream.subscribe
-  .wallet(walletAddress)
-  .tokenBalance('tokenMint')
-  .on((balanceUpdate) => {
-    console.log(`Token balance changed to: ${balanceUpdate.amount}`);
-  });
-
-// Example 11: NEW - Subscribe to live stats for tokens and pools
-// Get real-time statistics across all timeframes (1m, 5m, 15m, 30m, 1h, 4h, 24h)
-dataStream.subscribe.stats.token(tokenAddress).on((stats) => {
-  console.log('Live token stats update:');
-
-  // Access specific timeframe stats
-  if (stats['24h']) {
-    console.log('24h Stats:');
-    console.log(`  Volume: $${stats['24h'].volume.total.toLocaleString()}`);
-    console.log(`  Buys: ${stats['24h'].buys}, Sells: ${stats['24h'].sells}`);
-    console.log(`  Unique wallets: ${stats['24h'].wallets}`);
-    console.log(
-      `  Price change: ${stats['24h'].priceChangePercentage.toFixed(2)}%`
-    );
-  }
-
-  if (stats['1h']) {
-    console.log('1h Stats:');
-    console.log(
-      `  Buyers: ${stats['1h'].buyers}, Sellers: ${stats['1h'].sellers}`
-    );
-    console.log(`  Buy volume: $${stats['1h'].volume.buys.toLocaleString()}`);
-    console.log(`  Sell volume: $${stats['1h'].volume.sells.toLocaleString()}`);
-  }
-
-  // Iterate through all available timeframes
-  Object.entries(stats).forEach(([timeframe, data]) => {
-    console.log(
-      `${timeframe}: ${data.transactions} txns, ${data.wallets} wallets`
-    );
-  });
-});
-
-// Subscribe to live stats for a specific pool
-dataStream.subscribe.stats.pool('poolId').on((stats) => {
-  console.log('Pool stats update:');
-
-  if (stats['5m']) {
-    console.log('Last 5 minutes:');
-    console.log(`  Transactions: ${stats['5m'].transactions}`);
-    console.log(`  Volume: $${stats['5m'].volume.total.toLocaleString()}`);
-    console.log(`  Price: $${stats['5m'].price}`);
-  }
-});
-
-// Example 12: NEW - Monitor developer/creator holdings for a token
-dataStream.subscribe
-  .token(tokenAddress)
-  .dev.holding()
-  .on((devUpdate) => {
-    console.log(`Developer ${devUpdate.creator} holdings update:`);
-    console.log(`  Amount: ${devUpdate.amount}`);
-    console.log(`  Percentage: ${devUpdate.percentage.toFixed(4)}%`);
-    console.log(`  Previous: ${devUpdate.previousPercentage.toFixed(4)}%`);
-    const change = devUpdate.percentage - devUpdate.previousPercentage;
-    console.log(`  Change: ${change > 0 ? '+' : ''}${change.toFixed(4)}%`);
-  });
-
-// Example 13: NEW - Monitor top 10 holders for a token
-dataStream.subscribe
-  .token(tokenAddress)
-  .top10()
-  .on((top10Update) => {
-    console.log(
-      `Top 10 holders control ${top10Update.totalPercentage.toFixed(2)}% of supply`
-    );
-
-    if (top10Update.previousPercentage !== null) {
-      const change =
-        top10Update.totalPercentage - top10Update.previousPercentage;
-      console.log(
-        `Change from previous: ${change > 0 ? '+' : ''}${change.toFixed(2)}%`
-      );
-    }
-
-    console.log('Top 10 holders:');
-    top10Update.holders.forEach((holder, index) => {
-      console.log(
-        `  #${index + 1}: ${holder.address.slice(0, 8)}... - ${holder.percentage.toFixed(2)}%`
-      );
-    });
-  });
-
-// Example 14: NEW - Monitor platform and network fees for a token
-dataStream.subscribe
-  .token(tokenAddress)
-  .fees()
-  .on((feesUpdate) => {
-    console.log(
-      `Total fees accumulated: ${feesUpdate.fees.total.toFixed(6)} SOL`
-    );
-    console.log(
-      `MEV/Priority tips: ${feesUpdate.fees.totalTips.toFixed(6)} SOL`
-    );
-
-    console.log('Transaction tx', feesUpdate.tx);
-
-    // Individual platforms (not all will be present)
-    if (feesUpdate.fees.photon !== undefined) {
-      console.log(`Photon fees: ${feesUpdate.fees.photon.toFixed(6)} SOL`);
-    }
-    if (feesUpdate.fees.axiom !== undefined) {
-      console.log(`Axiom fees: ${feesUpdate.fees.axiom.toFixed(6)} SOL`);
-    }
-    if (feesUpdate.fees.bullx !== undefined) {
-      console.log(`BullX fees: ${feesUpdate.fees.bullx.toFixed(6)} SOL`);
-    }
-    if (feesUpdate.fees.jito !== undefined) {
-      console.log(`Jito tips: ${feesUpdate.fees.fees.jito.toFixed(6)} SOL`);
-    }
-    if (feesUpdate.fees.network !== undefined) {
-      console.log(`Network fees: ${feesUpdate.fees.network.toFixed(6)} SOL`);
-    }
-  });
-```
-
-Available subscription methods:
-
-```typescript
-// Token and pool updates
-dataStream.subscribe.latest(); // Latest tokens and pools
-dataStream.subscribe.token(tokenAddress); // Token changes (all pools - default)
-dataStream.subscribe.token(tokenAddress).all(); // Token changes (all pools - explicit)
-dataStream.subscribe.token(tokenAddress).primary(); // Token changes (primary pool only - auto-switches to new main pool)
-// Developer and Top Holders tracking
-dataStream.subscribe.token(tokenAddress).dev.holding(); // Developer holdings updates
-dataStream.subscribe.token(tokenAddress).top10(); // Top 10 holders updates
-dataStream.subscribe.token(tokenAddress).fees(); 
-dataStream.subscribe.pool(poolId); // Pool changes
-
-// Price updates
-dataStream.subscribe.price.aggregated(tokenAddress); // NEW: Aggregated price across all pools (RECOMMENDED)
-dataStream.subscribe.price.token(tokenAddress); // DEPRECATED: Token price (auto-switches to new main pool)
-dataStream.subscribe.price.allPoolsForToken(tokenAddress); // All price updates for a token
-dataStream.subscribe.price.pool(poolId); // Pool price
-
-// Transactions
-dataStream.subscribe.tx.token(tokenAddress); // Token transactions
-dataStream.subscribe.tx.pool(tokenAddress, poolId); // Pool transactions
-dataStream.subscribe.tx.wallet(walletAddress); // Wallet transactions
-
-// Wallet balance updates (NEW location)
-dataStream.subscribe.wallet(walletAddress).balance(); // All token balance changes
-dataStream.subscribe.wallet(walletAddress).tokenBalance(tokenAddress); // Specific token balance
-
-// Live statistics (NEW)
-dataStream.subscribe.stats.token(tokenAddress); // Live stats for a token
-dataStream.subscribe.stats.pool(poolId); // Live stats for a pool
-dataStream.subscribe.stats.total.token(tokenAddress); // Direct total stats object for a token
-dataStream.subscribe.stats.total.pool(poolId); // Direct total stats object for a pool
-
-// Volume rooms (NEW)
-dataStream.subscribe.volume.pool(poolId); // USD volume per pool (flush ~50ms)
-dataStream.subscribe.volume.token(tokenAddress); // USD volume per token (cross-pool deduplicated, flush ~50ms)
-
-// PnL v2 (meme / tradable mints — not SOL)
-dataStream.subscribe.pnl.position(walletAddress, tokenAddress); // tradeUpdate + balanceUpdate + throttled priceUpdate for one position
-dataStream.subscribe.pnl.wallet(walletAddress); // all position updates for wallet
-dataStream.subscribe.pnl.summary(walletAddress); // wallet summary aggregates
-
-// Pump.fun stages
-dataStream.subscribe.graduating(); // Graduating tokens
-dataStream.subscribe.graduated(); // Graduated tokens
-
-// Metadata and holders
-dataStream.subscribe.metadata(tokenAddress); // Token metadata
-dataStream.subscribe.holders(tokenAddress); // Holder updates
-
-// Curve percentage updates
-dataStream.subscribe.curvePercentage(market, percentage); // Market options: 'launchpad', 'pumpfun', 'boop', 'meteora-curve'
-
-// Snipers and Insiders tracking
-dataStream.subscribe.snipers(tokenAddress); // Track sniper wallets
-dataStream.subscribe.insiders(tokenAddress); // Track insider wallets
-
-// Whale & KOL trades (cumulative volume rooms)
-dataStream.subscribe.tx.whale(5000); // transaction:whale:5000 (1000|2500|5000|10000)
-dataStream.subscribe.tx.kol(); // all KOL trades
-dataStream.subscribe.tx.kol(10000); // transaction:kol:10000
-dataStream.subscribe.tx.poolWallet(tokenAddress, poolId, walletAddress); // token+pool+wallet
-
-// Prediction Markets (Beta) — same Datastream hub; dedupe with sourceId/tradeId
-dataStream.subscribe.pm.trades();
-dataStream.subscribe.pm.significantTrades();
-dataStream.subscribe.pm.exchange('polymarket').trades();
-dataStream.subscribe.pm.market('polymarket', 'clobTokenId').prices();
-dataStream.subscribe.pm.event('kalshi', 'eventTicker').volume();
-dataStream.subscribe.pm.crypto('btc').prices();
-```
-
-Each subscription method returns a response object with:
-
-- `room`: The subscription channel name
-- `on()`: Method to attach a listener with proper TypeScript types
-  - Returns an object with `unsubscribe()` method for easy cleanup
-
-### Smart Primary Pool Routing
-
-The `token:primary` and `price-by-token` subscriptions now automatically switch to the new primary pool when liquidity migrates:
-
-```typescript
-// Subscribe to primary pool - automatically switches when main pool changes
-dataStream.subscribe.token(tokenAddress).primary().on((poolUpdate) => {
-  console.log('Primary pool update (auto-switches to new main pool):');
-  console.log(`Pool ID: ${poolUpdate.poolId}`);
-  console.log(`Liquidity: $${poolUpdate.liquidity.usd}`);
-  // When liquidity moves to a new pool, you'll automatically get updates from the new pool
-});
-
-// DEPRECATED: price.token() also auto-switches but use price.aggregated() instead
-dataStream.subscribe.price.token(tokenAddress).on((priceData) => {
-  console.log('Price from main pool (auto-switches):');
-  console.log(`Price: $${priceData.price}`);
-  console.log(`Pool: ${priceData.pool}`);
-});
-
-// RECOMMENDED: Use aggregated price for accurate data across all pools
-dataStream.subscribe.price.aggregated(tokenAddress).on((priceData) => {
-  console.log('Aggregated price data:');
-  console.log(`Median: $${priceData.aggregated.median}`);
-  console.log(`Average: $${priceData.aggregated.average}`);
-  console.log(`Range: $${priceData.aggregated.min} - $${priceData.aggregated.max}`);
+process.once('SIGINT', () => {
+  swapListener.unsubscribe();
+  liquidityListener.unsubscribe();
+  stream.unsubscribe(swaps.room);
+  stream.unsubscribe(liquidity.room);
+  stream.disconnect();
 });
 ```
 
-### Migration Guide for Balance Updates
+The example disables automatic reconnection for a bounded connection lifecycle. By default, `autoReconnect` is `true`; its delay settings are `reconnectDelay` (2,500 ms), `reconnectDelayMax` (4,500 ms), and `randomizationFactor` (0.5). Browser worker support is available through `useWorker` and an optional `workerUrl`. See [`DatastreamConfig`](./src/datastream.ts) for the complete configuration.
 
-The wallet balance subscriptions have been moved to a more intuitive location:
+Calling the listener's `unsubscribe()` removes that callback. Calling `stream.unsubscribe(room)` leaves the server room; `disconnect()` closes the connection and clears subscriptions.
 
-```typescript
-// OLD (deprecated - will show warning)
-dataStream.subscribe.tx.wallet(walletAddress).balance().on(callback);
-dataStream.subscribe.tx
-  .wallet(walletAddress)
-  .tokenBalance(tokenAddress)
-  .on(callback);
+### Liquidity and identity subscriptions
 
-// NEW (recommended)
-dataStream.subscribe.wallet(walletAddress).balance().on(callback);
-dataStream.subscribe
-  .wallet(walletAddress)
-  .tokenBalance(tokenAddress)
-  .on(callback);
+The five LP scopes are:
 
-// Note: Wallet transactions remain under .tx namespace
-dataStream.subscribe.tx.wallet(walletAddress).on(callback); // Still the correct way for transactions
-```
+- `stream.subscribe.liquidity.token(mint, options)`
+- `stream.subscribe.liquidity.tokenPool(mint, pool, options)`
+- `stream.subscribe.liquidity.tokenPoolWallet(mint, pool, wallet, options)`
+- `stream.subscribe.liquidity.pool(pool, options)`
+- `stream.subscribe.liquidity.wallet(wallet, options)`
 
-### Migration Guide for Price Updates
+`options` is optional. Set `{ enriched: true }` to receive wallet identity. The same option works on `subscribe.tx.token`, `.pool`, `.poolWallet`, `.wallet`, `.whale`, and `.kol`. For all enriched KOL trades, use `stream.subscribe.tx.kol(undefined, { enriched: true })`.
 
-The `price.token()` method is deprecated in favor of `price.aggregated()`:
+Live LP events are provisional at processed commitment. Reconcile with REST history after reconnecting: timestamps can differ, and no rollback notifications are sent. Multiple LP actions can share a transaction signature, pool, and wallet; **do not deduplicate LP events by signature**. Overlapping subscriptions can each deliver the same activity.
 
-```typescript
-// OLD (deprecated - will show warning)
-dataStream.subscribe.price.token(tokenAddress).on(callback);
+Enriched notifications can arrive later or out of order. `identityStatus: 'partial'` means the lookup was incomplete; no later identity correction is sent for that notification. Swap subscriptions continue to carry swaps only, so a combined live feed needs both swap and liquidity subscriptions.
 
-// NEW (recommended - more accurate across all pools)
-dataStream.subscribe.price.aggregated(tokenAddress).on(callback);
+### Other streams
 
-// For specific pool price (still valid)
-dataStream.subscribe.price.pool(poolId).on(callback);
-```
+Use `subscribe.price.aggregated(mint)` for aggregate prices, `subscribe.price.pool(pool)` for a specific pool, and `subscribe.wallet(wallet).balance()` for wallet balances. The SDK also exposes token lifecycle, metadata, holders, pool updates, stats, volume, snipers, insiders, fees, PnL, DCA, and prediction-market subscriptions.
 
-## WebSocket Data Stream
+Explore the [Datastream examples](./examples/datastream.ts), [PnL streams](./examples/pnl-v2-datastream.ts), and [DCA streams](./examples/dca-datastream.ts).
 
-The `Datastream` class provides real-time access to Solana Tracker data:
+## API and examples
 
-### Events
+Choose an example by the data you need. The [HTTP documentation](https://docs.solanatracker.io/) describes endpoint limits and response semantics; exported TypeScript types provide the SDK's method signatures and options.
 
-The Datastream extends the standard EventEmitter interface, allowing you to listen for various events:
+For the complete method list, see [`Client`](./src/data-api.ts), [`PredictionMarketsClient`](./src/prediction-markets.ts), and [`Datastream`](./src/datastream.ts).
 
-```typescript
-// Connection events
-dataStream.on('connected', () => console.log('Connected to WebSocket server'));
-dataStream.on('disconnected', (socketType) =>
-  console.log(`Disconnected: ${socketType}`)
-);
-dataStream.on('reconnecting', (attempt) =>
-  console.log(`Reconnecting: attempt ${attempt}`)
-);
-dataStream.on('error', (error) => console.error('Error:', error));
+- **Tokens and discovery:** token details, holders, deployers, search, trending, and launch stages. [Token examples](./examples/tokens.ts) · [Bundlers](./examples/bundlers.ts)
+- **Prices and charts:** current and historical prices, batch prices, OHLCV, and holder charts. [Prices](./examples/prices.ts) · [Charts](./examples/charts.ts)
+- **Wallets and trades:** balances, portfolio data, swaps, and scoped activity history. [Wallets](./examples/wallets.ts) · [Trades](./examples/trades.ts) · [Liquidity](./examples/liquidity.ts)
+- **PnL v2:** KOL leaderboards, token traders, wallet analytics, positions, and batch lookups. [REST](./examples/pnl-v2.ts) · [Streams](./examples/pnl-v2-datastream.ts)
+- **Jupiter DCA:** programs, orders, token flows, buyers, sellers, users, and pairs. [REST](./examples/dca.ts) · [Streams](./examples/dca-datastream.ts)
+- **Market activity:** token/pool stats, Lighthouse market summaries, whale trades, and KOL trades. [Stats](./examples/stats.ts) · [Lighthouse](./examples/lighthouse.ts) · [Whale/KOL feeds](./examples/whale-kol.ts)
+- **Prediction markets:** markets, events, prices, orderbooks, traders, accounts, and live updates. [Prediction-market examples](./examples/prediction-markets.ts)
+- **Legacy PnL:** existing wallet/token PnL and top-trader integrations. [Legacy examples](./examples/profit-loss.ts)
 
-// Data events - Standard approach
-dataStream.on('latest', (data) => console.log('New token:', data));
-dataStream.on(`price:aggregated:${tokenAddress}`, (data) =>
-  console.log('Aggregated price update:', data)
-); // NEW
-dataStream.on(`price-by-token:${tokenAddress}`, (data) =>
-  console.log('Price update (deprecated):', data)
-);
-dataStream.on(`transaction:${tokenAddress}`, (data) =>
-  console.log('New transaction:', data)
-);
-dataStream.on(`token:${tokenAddress}`, (data) =>
-  console.log('Token update (all pools):', data)
-);
-dataStream.on(`token:${tokenAddress}:primary`, (data) =>
-  console.log('Token update (primary pool - auto-switches):', data)
-);
-dataStream.on(`sniper:${tokenAddress}`, (data) =>
-  console.log('Sniper update:', data)
-);
-dataStream.on(`insider:${tokenAddress}`, (data) =>
-  console.log('Insider update:', data)
-);
-dataStream.on(`stats:token:${tokenAddress}`, (data) =>
-  console.log('Token stats:', data)
-);
-dataStream.on(`stats:pool:${poolId}`, (data) =>
-  console.log('Pool stats:', data)
-);
+Some examples export functions instead of running automatically. Review the file, provide configuration through your environment, and call the function you need. Example addresses are public identifiers, not credentials.
 
-// Developer and top holders events
-dataStream.on(`dev_holding:${tokenAddress}`, (data) =>
-  console.log('Dev holding update:', data)
-);
-dataStream.on(`top10:${tokenAddress}`, (data) =>
-  console.log('Top 10 holders update:', data)
-);
-dataStream.on(`fees:${tokenAddress}`, (data) => console.log('Fees update:', data));
-
-// New approach - Chain .on() directly to subscription
-dataStream.subscribe.latest().on((data) => console.log('New token:', data));
-dataStream.subscribe.price
-  .aggregated(tokenAddress)
-  .on((data) => console.log('Aggregated price:', data)); // NEW
-dataStream.subscribe.tx
-  .token(tokenAddress)
-  .on((data) => console.log('Transaction:', data));
-dataStream.subscribe
-  .snipers(tokenAddress)
-  .on((data) => console.log('Sniper:', data));
-dataStream.subscribe
-  .insiders(tokenAddress)
-  .on((data) => console.log('Insider:', data));
-dataStream.subscribe.stats
-  .token(tokenAddress)
-  .on((data) => console.log('Stats:', data));
-dataStream.subscribe.stats
-  .pool(poolId)
-  .on((data) => console.log('Pool stats:', data));
-```
-
-## API Documentation
-
-The library provides methods for all endpoints in the Solana Tracker Data API.
-
-### Token Endpoints
+### Search and holder enrichment
 
 ```typescript
-// Get token information
-const tokenInfo = await client.getTokenInfo('tokenAddress');
-
-// Get token by pool address
-const tokenByPool = await client.getTokenByPool('poolAddress');
-
-// Get token holders
-const tokenHolders = await client.getTokenHolders('tokenAddress');
-
-// NEW: Get token holders with pagination (up to 5000 per request)
-const paginatedHolders = await client.getTokenHoldersPaginated(
-  'tokenAddress',
-  100, // limit (optional, default: 100, max: 5000)
-  'cursorFromPreviousRequest' // cursor (optional)
-);
-
-// Access the data
-console.log('Total holders:', paginatedHolders.total);
-console.log('Holders in this page:', paginatedHolders.accounts.length);
-console.log('Has more pages:', paginatedHolders.hasMore);
-
-// Get next page
-if (paginatedHolders.hasMore) {
-  const nextPage = await client.getTokenHoldersPaginated(
-    'tokenAddress',
-    100,
-    paginatedHolders.cursor
-  );
-}
-
-// Get top token holders
-const topHolders = await client.getTopHolders('tokenAddress');
-
-// Get all-time high price for a token
-const athPrice = await client.getAthPrice('tokenAddress');
-
-// Get tokens by deployer wallet
-const deployerTokens = await client.getTokensByDeployer('walletAddress');
-
-// Get tokens by deployer with filters (NEW)
-const filteredDeployerTokens = await client.getTokensByDeployer('walletAddress', {
-  page: 1,
-  limit: 100,
-  market: ['raydium', 'pumpfun'],
-  launchpad: 'pumpfun',
-});
-
-// Get deployer tokens with full token details (NEW)
-const fullDeployerTokens = await client.getTokensByDeployer('walletAddress', {
+const results = await client.searchTokens({
+  query: 'SOL',
+  market: ['raydium', 'orca'],
+  minLiquidity: 10_000,
+  limit: 10,
   format: 'full',
-  limit: 50, // max 100 when format=full
 });
-// fullDeployerTokens.tokens are TokenDetailResponse objects
+console.log(results.data);
 
-// Get latest tokens
-const latestTokens = await client.getLatestTokens(100);
-
-// Get information about multiple tokens (UPDATED: Now returns MultiTokensResponse)
-const multipleTokens = await client.getMultipleTokens([
-  'So11111111111111111111111111111111111111112',
-  '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
-]);
-// Access tokens like: multipleTokens.tokens['tokenAddress']
-
-// Get trending tokens
-const trendingTokens = await client.getTrendingTokens('1h');
-
-// Get top performing tokens by price change percentage
-const topPerformers = await client.getTopPerformers('1h');
-// Valid timeframes: '5m', '15m', '30m', '1h', '6h', '12h', '24h'
-
-// Get tokens by volume
-const volumeTokens = await client.getTokensByVolume('24h');
-
-// NEW: Get token overview with advanced filtering
-// Backward compatible - simple limit still works
-const simpleOverview = await client.getTokenOverview(50);
-
-// NEW: Advanced filtering with markets and risk scoring
-const filteredOverview = await client.getTokenOverview({
-  limit: 100,
-  minCurve: 60,
-  minHolders: 100,
-  reduceSpam: true,
-  minMarketCap: 100000,
-  markets: ['pumpfun', 'raydium', 'meteora'],
-  minRiskScore: 50,
-  maxRiskScore: 80,
-});
-
-// Returns: { latest: [...], graduating: [...], graduated: [...] }
-
-// NEW: Get graduated tokens with filtering and pagination
-const graduatedTokens = await client.getGraduatedTokens({
-  limit: 100,
-  page: 1,
-  reduceSpam: true,
-  minLiquidity: 50000,
-  markets: ['raydium'],
-  minMarketCap: 1000000,
-});
-
-// NEW: Get graduating tokens with filtering
-const graduatingTokens = await client.getGraduatingTokens({
-  limit: 50,
-  minCurve: 70,
-  maxCurve: 95,
-  minHolders: 50,
-  maxHolders: 500,
-  minMarketCap: 50000,
-  markets: ['pumpfun', 'moonshot'],
-});
+const holders = await client.getTokenHolders(mint, 'all');
+console.log(holders.accounts);
 ```
 
-### Token Overview Filtering Options
+Search supports market and launchpad arrays, distribution and risk filters, social filters, and cursor pagination. `format: 'full'` returns full token objects on search and deployer queries. Holder enrichment accepts `'identity'`, `'walletPnl'`, `'identity,walletPnl'`, `'all'`, or `'*'`. See [`SearchParams` and response types](./src/interfaces.ts).
 
-All token overview endpoints (`getTokenOverview`, `getGraduatedTokens`, `getGraduatingTokens`) support these filters:
+### PnL v2 behavior
 
-```typescript
-interface TokenOverviewParams {
-  // Basic parameters
-  limit?: number; // Max results (default: 100, max: 500)
-  
-  // Overview-specific
-  minCurve?: number; // Min curve percentage for graduating tokens
-  minHolders?: number; // Min number of holders for graduating
-  maxHolders?: number; // Max number of holders for graduating
-  reduceSpam?: boolean; // Filter out quick graduated tokens
-  
-  // Graduated-specific
-  page?: number; // Page number for pagination
-  
-  // Graduating-specific
-  minCurve?: number; // Min curve percentage (default: 40)
-  maxCurve?: number; // Max curve percentage (default: 100)
-  
-  // Shared filters
-  minLiquidity?: number; // Minimum liquidity in USD
-  maxLiquidity?: number; // Maximum liquidity in USD
-  minMarketCap?: number; // Minimum market cap in USD
-  maxMarketCap?: number; // Maximum market cap in USD
-  markets?: string[]; // Array of markets: ['pumpfun', 'raydium', 'meteora', etc]
-  minRiskScore?: number; // Minimum risk score (0-100)
-  maxRiskScore?: number; // Maximum risk score (0-100)
-  rugged?: boolean; // Filter by rugged status
-}
-```
+PnL v2 covers meme and tradable SPL positions, not native or wrapped SOL. Wallet queries can return `PnlV2WalletQueued` while indexing; check `queued === true` before reading analytics. Supported endpoints accept `pnlMode: 'strict'` (default), `'adjusted'`, or `'raw'` to control how flagged positions contribute to PnL. Token-scoped responses distinguish `pnl.token` from `pnl.wallet`; identity is included on enriched rows. The [PnL example](./examples/pnl-v2.ts) demonstrates queue handling and all method families.
 
-**Example: Find safe, high-liquidity graduated tokens**
-```typescript
-const safeTokens = await client.getGraduatedTokens({
-  limit: 50,
-  reduceSpam: true,
-  minLiquidity: 100000,
-  minMarketCap: 500000,
-  markets: ['raydium', 'meteora'],
-  maxRiskScore: 50,
-  rugged: false,
-});
-```
+## Prediction markets
 
-**Example: Monitor tokens about to graduate**
-```typescript
-const nearGraduation = await client.getGraduatingTokens({
-  minCurve: 85,
-  maxCurve: 99,
-  minHolders: 200,
-  minMarketCap: 100000,
-  markets: ['pumpfun'],
-});
-```
-
-### Advanced Token Search (Enhanced!)
-
-The `searchTokens` method now supports **60+ filter parameters** for precise token discovery:
-
-```typescript
-// Basic search with query
-const basicSearch = await client.searchTokens({
-  query: 'TRUMP',
-  limit: 50,
-  sortBy: 'marketCapUsd',
-  sortOrder: 'desc',
-});
-
-// Search by exact symbol
-const symbolSearch = await client.searchTokens({
-  symbol: 'TRUMP',
-  minLiquidity: 1000000,
-});
-
-// Filter by holder distribution - Find tokens with decentralized ownership
-const decentralizedTokens = await client.searchTokens({
-  maxDev: 5, // Dev holds max 5%
-  maxTop10: 20, // Top 10 holders max 20%
-  maxInsiders: 10, // Insiders max 10%
-  maxSnipers: 5, // Snipers max 5%
-  minHolders: 1000, // At least 1000 holders
-  minLiquidity: 50000,
-  sortBy: 'holders',
-  sortOrder: 'desc',
-});
-
-// Find graduating Pump.fun tokens
-const graduatingTokens = await client.searchTokens({
-  market: 'pumpfun',
-  minCurvePercentage: 80,
-  maxCurvePercentage: 99,
-  sortBy: 'curvePercentage',
-  sortOrder: 'desc',
-});
-
-// Search across multiple markets (NEW)
-const multiMarketTokens = await client.searchTokens({
-  market: ['raydium', 'orca', 'pumpfun'],
-  minLiquidity: 50000,
-  sortBy: 'volume_24h',
-  sortOrder: 'desc',
-});
-
-// Filter by multiple launchpads (NEW)
-const launchpadTokens = await client.searchTokens({
-  launchpad: ['pumpfun', 'boop'],
-  minMarketCap: 100000,
-});
-
-// Get full token objects from search (NEW)
-const fullTokenSearch = await client.searchTokens({
-  query: 'TRUMP',
-  format: 'full',
-  limit: 50, // max 100 when format=full
-});
-// fullTokenSearch.data items include: token, pools, events, risk, buys, sells, txns, holders
-
-// Search by social media presence
-const tokensWithTwitter = await client.searchTokens({
-  twitter: 'https://x.com/realDonaldTrump',
-  minLiquidity: 10000,
-});
-
-// Find highly active tokens by fees
-const activeTokens = await client.searchTokens({
-  minFeesTotal: 100, // At least 100 SOL in total fees
-  minFeesTrading: 50, // At least 50 SOL in trading fees
-  sortBy: 'fees.total',
-  sortOrder: 'desc',
-  limit: 20,
-});
-
-// Coin Communities — tokens with live community chat activity
-const communityTokens = await client.searchTokens({
-  hasCoinCommunity: true,
-  sortBy: 'communityMessages',
-  sortOrder: 'desc',
-  limit: 50,
-});
-
-// At least 10 community messages and min $20k liquidity
-const activeCommunityTokens = await client.searchTokens({
-  hasCoinCommunity: true,
-  minCommunityMessages: 10,
-  minLiquidity: 20000,
-});
-
-// Active pump.fun tokens with community chat
-const pumpfunCommunity = await client.searchTokens({
-  market: 'pumpfun',
-  hasCoinCommunity: true,
-  sortBy: 'communityMessages',
-  sortOrder: 'desc',
-});
-// Each result includes hasCoinCommunity and communityMessages on the pool row
-
-// Filter by volume across different timeframes
-const highVolumeTokens = await client.searchTokens({
-  minVolume_24h: 100000, // At least $100k volume in 24h
-  minVolume_1h: 10000, // At least $10k volume in 1h
-  minLiquidity: 50000,
-  sortBy: 'volume_24h',
-  sortOrder: 'desc',
-});
-
-// Filter by transaction activity
-const popularTokens = await client.searchTokens({
-  minBuys: 100,
-  minSells: 50,
-  minTotalTransactions: 150,
-  minHolders: 500,
-  sortBy: 'totalTransactions',
-  sortOrder: 'desc',
-});
-
-// Find tokens with specific token characteristics
-const safeTokens = await client.searchTokens({
-  freezeAuthority: 'null', // No freeze authority
-  mintAuthority: 'null', // No mint authority
-  lpBurn: 100, // 100% LP burned
-  minLiquidity: 25000,
-  sortBy: 'liquidityUsd',
-  sortOrder: 'desc',
-});
-
-// Search by creator wallet
-const creatorTokens = await client.searchTokens({
-  creator: 'CreatorWalletAddress',
-  sortBy: 'createdAt',
-  sortOrder: 'desc',
-});
-
-// Cursor-based pagination (faster for deep pagination)
-let allResults = [];
-let cursor = undefined;
-
-do {
-  const results = await client.searchTokens({
-    minLiquidity: 5000,
-    limit: 100,
-    cursor: cursor,
-  });
-
-  allResults = allResults.concat(results.data);
-  cursor = results.nextCursor;
-} while (cursor && results.hasMore);
-
-console.log(`Found ${allResults.length} tokens`);
-
-// Complex multi-filter search
-const customSearch = await client.searchTokens({
-  // Liquidity and Market Cap
-  minLiquidity: 100000,
-  maxLiquidity: 10000000,
-  minMarketCap: 500000,
-  maxMarketCap: 50000000,
-
-  // Holder Distribution
-  minHolders: 500,
-  maxTop10: 30,
-  maxDev: 10,
-  maxInsiders: 15,
-  maxSnipers: 5,
-
-  // Volume (24h)
-  minVolume_24h: 50000,
-
-  // Transaction Activity
-  minBuys: 50,
-  minTotalTransactions: 100,
-
-  // Token Characteristics
-  freezeAuthority: 'null',
-  mintAuthority: 'null',
-  lpBurn: 100,
-
-  // Fees (indicates active trading)
-  minFeesTotal: 10,
-
-  // Sorting and Pagination
-  sortBy: 'volume_24h',
-  sortOrder: 'desc',
-  limit: 50,
-  showPriceChanges: true,
-});
-```
-
-#### Search Parameters Reference
-
-**Search & Pagination:**
-
-- `query` - Search term for token symbol, name, or address
-- `symbol` - Search for tokens with exact symbol match
-- `page` - Page number for offset-based pagination (1-based)
-- `limit` - Results per page (default: 100, max: 500)
-- `cursor` - Cursor for cursor-based pagination (faster for deep searches)
-- `sortBy` - Field to sort by (see sortable fields below)
-- `sortOrder` - Sort order: `'asc'` or `'desc'`
-- `showAllPools` - Return all pools for each token (default: false)
-- `showPriceChanges` - Include price change data in response (default: false)
-
-**Sortable Fields:**
-
-- Market data: `liquidityUsd`, `marketCapUsd`, `priceUsd`, `volume`, `volume_5m`, `volume_15m`, `volume_30m`, `volume_1h`, `volume_6h`, `volume_12h`, `volume_24h`
-- Holder distribution: `top10`, `dev`, `insiders`, `snipers`, `holders`
-- Trading activity: `buys`, `sells`, `totalTransactions`
-- Fees: `fees.total`, `fees.totalTrading`, `fees.totalTips`
-- Other: `createdAt`, `lpBurn`, `curvePercentage`
-
-**Creation Filters:**
-
-- `minCreatedAt` - Minimum creation date (unix timestamp in ms)
-- `maxCreatedAt` - Maximum creation date (unix timestamp in ms)
-
-**Liquidity & Market Cap Filters:**
-
-- `minLiquidity` - Minimum liquidity in USD
-- `maxLiquidity` - Maximum liquidity in USD (capped at $100B)
-- `minMarketCap` - Minimum market cap in USD
-- `maxMarketCap` - Maximum market cap in USD (capped at $5T)
-
-**Volume Filters:**
-
-- `minVolume` / `maxVolume` - General volume filters
-- `volumeTimeframe` - Timeframe for volume: `'5m'`, `'15m'`, `'30m'`, `'1h'`, `'6h'`, `'12h'`, `'24h'`
-- Timeframe-specific: `minVolume_5m`, `maxVolume_5m`, `minVolume_15m`, `maxVolume_15m`, `minVolume_30m`, `maxVolume_30m`, `minVolume_1h`, `maxVolume_1h`, `minVolume_6h`, `maxVolume_6h`, `minVolume_12h`, `maxVolume_12h`, `minVolume_24h`, `maxVolume_24h`
-
-**Transaction Filters:**
-
-- `minBuys` / `maxBuys` - Filter by number of buy transactions
-- `minSells` / `maxSells` - Filter by number of sell transactions
-- `minTotalTransactions` / `maxTotalTransactions` - Filter by total transactions
-
-**Holder Filters:**
-
-- `minHolders` / `maxHolders` - Filter by total holder count
-- `minTop10` / `maxTop10` - Filter by % held by top 10 holders (0-100)
-- `minDev` / `maxDev` - Filter by % held by developer (0-100)
-- `minInsiders` / `maxInsiders` - Filter by % held by insiders (0-100)
-- `minSnipers` / `maxSnipers` - Filter by % held by snipers (0-100)
-
-**Token Characteristics:**
-
-- `lpBurn` - LP token burn percentage (0-100)
-- `market` - Market identifier or array of markets (e.g., `'pumpfun'`, `'raydium'`, or `['raydium', 'orca', 'pumpfun']`)
-- `freezeAuthority` - Freeze authority address (use `'null'` for none)
-- `mintAuthority` - Mint authority address (use `'null'` for none)
-- `deployer` - Deployer wallet address
-- `creator` - Token creator wallet address
-- `status` - Token status (`'graduating'`, `'graduated'`, `'default'`)
-- `minCurvePercentage` / `maxCurvePercentage` - Bonding curve % (0-100)
-
-**Social Media Filters (exact match):**
-
-- `twitter` - Twitter/X profile URL
-- `telegram` - Telegram channel/group URL
-- `discord` - Discord server invite URL
-- `website` - Official website URL
-- `facebook` - Facebook page URL
-- `instagram` - Instagram profile URL
-- `youtube` - YouTube channel URL
-- `reddit` - Reddit community URL
-- `tiktok` - TikTok profile URL
-- `github` - GitHub repository URL
-
-**Launchpad Filter:**
-
-- `launchpad` - Launchpad name or array of names (e.g., `'pumpfun'`, or `['pumpfun', 'boop']`)
-
-**Format:**
-
-- `format` - Set to `'full'` to return full token objects (same shape as `/tokens/:token`). When `format=full`, max limit is capped at 100.
-
-**Fees Filters (in SOL):**
-
-- `minFeesTotal` / `maxFeesTotal` - Total fees paid
-- `minFeesTrading` / `maxFeesTrading` - Trading fees paid
-- `minFeesTips` / `maxFeesTips` - Priority fees/tips paid
-
-**Coin Communities Filters:**
-
-- `hasCoinCommunity` - `true` for tokens with at least one monitored community message; `false` for tokens with zero messages
-- `minCommunityMessages` / `maxCommunityMessages` - Filter by live message count range (inclusive)
-- Sort by `sortBy=communityMessages` with `sortOrder=asc|desc`
-
-#### Search Response
-
-The search response includes pagination information and detailed token data:
-
-```typescript
-// Default response returns SearchResult items
-// With format: 'full', returns TokenDetailResponse items
-interface SearchResponse<T = SearchResult> {
-  status: string;
-  data: T[]; // Array of token results (SearchResult or TokenDetailResponse when format=full)
-  total?: number; // Total number of results
-  pages?: number; // Total number of pages
-  page?: number; // Current page number
-  nextCursor?: string; // Cursor for next page (cursor-based pagination)
-  hasMore?: boolean; // Whether there are more results
-}
-
-interface SearchResult {
-  // Basic token info
-  name: string;
-  symbol: string;
-  mint: string;
-  image?: string;
-  decimals: number;
-
-  // Pool and market info
-  poolAddress: string;
-  market: string;
-  quoteToken: string;
-
-  // Price and liquidity
-  liquidityUsd: number;
-  marketCapUsd: number;
-  priceUsd: number;
-
-  // Trading activity
-  buys: number;
-  sells: number;
-  totalTransactions: number;
-  volume: number;
-  volume_5m: number;
-  volume_15m: number;
-  volume_30m: number;
-  volume_1h: number;
-  volume_6h: number;
-  volume_12h: number;
-  volume_24h: number;
-
-  // Holder information
-  holders: number;
-  top10?: number; // % held by top 10 holders
-  dev?: number; // % held by developer
-  insiders?: number; // % held by insiders
-  snipers?: number; // % held by snipers
-
-  // Verification
-  jupiter?: boolean; // Jupiter verification status
-  verified?: boolean; // General verification status
-
-  // Token characteristics
-  lpBurn: number;
-  freezeAuthority: string | null;
-  mintAuthority: string | null;
-  deployer: string;
-  status: string;
-  createdAt: number;
-  lastUpdated: number;
-
-  // Social media
-  socials?: {
-    twitter?: string;
-    telegram?: string;
-    discord?: string;
-    website?: string;
-    facebook?: string;
-    instagram?: string;
-    youtube?: string;
-    reddit?: string;
-    tiktok?: string;
-    github?: string;
-  };
-
-  // Coin Communities (live chat message counts)
-  hasCoinCommunity?: boolean;
-  communityMessages?: number;
-
-  // Fees information
-  fees?: {
-    total?: number; // Total fees in SOL
-    totalTrading?: number; // Trading fees in SOL
-    totalTips?: number; // Priority fees/tips in SOL
-  };
-
-  // Token creation details
-  tokenDetails?: {
-    creator: string;
-    tx: string;
-    time: number;
-  };
-}
-```
-
-### Price Endpoints
-
-```typescript
-// Get token price
-const tokenPrice = await client.getPrice('tokenAddress', true); // Include price changes
-
-// Get historic price information
-const priceHistory = await client.getPriceHistory('tokenAddress');
-
-// Get price at a specific timestamp
-const timestampPrice = await client.getPriceAtTimestamp(
-  'tokenAddress',
-  1690000000
-);
-
-// Get price range (lowest/highest in time range)
-const priceRange = await client.getPriceRange(
-  'tokenAddress',
-  1690000000,
-  1695000000
-);
-
-// Get price using POST method
-const postedPrice = await client.postPrice('tokenAddress');
-
-// Get multiple token prices
-const multiplePrices = await client.getMultiplePrices([
-  'So11111111111111111111111111111111111111112',
-  '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
-]);
-
-// Get multiple token prices using POST
-const postedMultiplePrices = await client.postMultiplePrices([
-  'So11111111111111111111111111111111111111112',
-  '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
-]);
-```
-
-### Wallet Endpoints
-
-```typescript
-// Get basic wallet information
-const walletBasic = await client.getWalletBasic('walletAddress');
-
-// Get all tokens in a wallet
-const wallet = await client.getWallet('walletAddress');
-
-// Get wallet tokens with pagination
-const walletPage = await client.getWalletPage('walletAddress', 2);
-
-// Get wallet portfolio chart data with historical values and PnL
-const walletChart = await client.getWalletChart('walletAddress');
-console.log('24h PnL:', walletChart.pnl['24h']);
-console.log('30d PnL:', walletChart.pnl['30d']);
-console.log('Chart data points:', walletChart.chartData.length);
-
-// Get wallet trades
-const walletTrades = await client.getWalletTrades(
-  'walletAddress',
-  undefined,
-  true,
-  true,
-  false
-);
-```
-
-### Trade Endpoints
-
-```typescript
-// Get trades for a token
-const tokenTrades = await client.getTokenTrades('tokenAddress');
-
-// Get trades for a specific token and pool
-const poolTrades = await client.getPoolTrades('tokenAddress', 'poolAddress');
-
-// Get trades for a specific token, pool, and wallet
-const userPoolTrades = await client.getUserPoolTrades(
-  'tokenAddress',
-  'poolAddress',
-  'walletAddress'
-);
-
-// Get trades for a specific token and wallet
-const userTokenTrades = await client.getUserTokenTrades(
-  'tokenAddress',
-  'walletAddress'
-);
-```
-
-### Chart Endpoints
-
-```typescript
-// Get OHLCV data for a token - NEW: Now supports object syntax
-// Method 1: Object syntax (recommended for multiple parameters)
-const chartData = await client.getChartData({
-  tokenAddress: 'tokenAddress',
-  type: '1h',
-  timeFrom: 1690000000,
-  timeTo: 1695000000,
-  marketCap: false,
-  removeOutliers: true,
-  dynamicPools: true, // NEW: Dynamic pool selection
-  timezone: 'current', // NEW: Use current timezone or specify like 'America/New_York'
-  fastCache: true, // NEW: Enable fast cache for better performance
-  currency: 'usd', // NEW: Currency for price data - 'usd' (default), 'eur', or 'sol'
-});
-
-// Method 2: Traditional syntax (still supported)
-const chartData = await client.getChartData(
-  'tokenAddress',
-  '1h',
-  1690000000,
-  1695000000,
-  false, // marketCap
-  true, // removeOutliers
-  true, // dynamicPools
-  'current', // timezone
-  true, // fastCache
-  'eur' // currency
-);
-
-// Get chart in different currencies
-const chartInEur = await client.getChartData({
-  tokenAddress: 'tokenAddress',
-  type: '1h',
-  currency: 'eur',
-});
-
-const chartInSol = await client.getChartData({
-  tokenAddress: 'tokenAddress',
-  type: '1h',
-  currency: 'sol',
-});
-
-// Get OHLCV data for a specific token and pool
-const poolChartData = await client.getPoolChartData({
-  tokenAddress: 'tokenAddress',
-  poolAddress: 'poolAddress',
-  type: '15m',
-  timezone: 'UTC',
-  fastCache: false,
-  currency: 'usd', // Also supports currency option
-});
-
-// Get holder count chart data
-const holdersChart = await client.getHoldersChart('tokenAddress', '1d');
-
-// Get snipers percentage chart data
-const snipersChart = await client.getSnipersChart('tokenAddress', '1d');
-
-// Get insiders percentage chart data
-const insidersChart = await client.getInsidersChart('tokenAddress', '1d');
-
-// Get bundlers percentage chart data
-const bundlersChart = await client.getBundlersChart('tokenAddress', '1d');
-```
-
-### PnL Endpoints
-
-```typescript
-// Get PnL data for all positions of a wallet
-const walletPnL = await client.getWalletPnL('walletAddress', true, true, false);
-
-// Get the first 100 buyers of a token with PnL data
-const firstBuyers = await client.getFirstBuyers('tokenAddress');
-
-// Get PnL data for a specific token in a wallet - NEW: holdingCheck parameter
-const tokenPnL = await client.getTokenPnL(
-  'walletAddress',
-  'tokenAddress',
-  true
-);
-
-// Can also use object syntax
-const tokenPnL = await client.getTokenPnL({
-  wallet: 'walletAddress',
-  tokenAddress: 'tokenAddress',
-  holdingCheck: true,
-});
-```
-
-### PnL v2 REST (`/v2/pnl`)
-
-PnL v2 adds typed methods on `Client` for leaderboards, per-token traders, wallet analytics, and batch position lookups. Types are exported from the package with the `PnlV2` prefix (for example `PnlV2WalletOverviewResponse`, `PnlV2KOLLeaderboardParams`).
-
-**Token scope:** PnL v2 targets meme and tradable SPL positions (for example pump-style tokens). It is **not** for tracking SOL (native or wrapped `So111...`).
-
-Wallet endpoints may return a **queued** payload while the wallet is being indexed: check for `queued === true` and `indexed === false` (see `PnlV2WalletQueued`).
-
-#### `pnlMode` parameter
-
-Endpoints that accept `pnlMode` control how positions flagged by the invalid-PnL heuristic are counted toward realized PnL:
-
-| Mode | Behaviour |
-|------|-----------|
-| `strict` (default) | Flagged positions contribute **0** |
-| `adjusted` | Flagged positions get a cost-basis-capped value |
-| `raw` | No adjustment — `realized_pnl` passed through as-is |
-
-Accepted on: top traders (`/v2/pnl/leaderboard/top`), wallet overview (`/v2/pnl/wallets/:wallet`), wallet positions, wallet-token position, and all three position batch endpoints. The server also accepts the aliases `pnl_mode` and `mode`.
-
-```typescript
-import type { PnlMode } from '@solana-tracker/data-api';
-
-const mode: PnlMode = 'adjusted';
-const top = await client.getPnlV2TopTraders({ days: 90, pnlMode: mode, limit: 50 });
-// top.pagination.pnlMode → 'adjusted'
-// top.traders[0].pnlAdjustments → { mode, invalidPnl, adjustedCorrection }
-// top.traders[0].period.realizedRaw → gross PnL before filtering
-// top.traders[0].period.days → { profitable, losing, maxSinglePnl, winRate }
-```
-
-#### Unified identity
-
-Every wallet-scoped response now carries an `identity` field (top-level or per-row). It can include multiple tags and pluggable sources (`kol`, `bot`, `pool`, `developer`, `hacker`, `spam_dusting`, `exchange`, SNS, platform tags, `arbitrage`, etc.):
-
-```typescript
-import type { PnlV2Identity } from '@solana-tracker/data-api';
-// identity?: { name, twitter, avatar, type, tags, platforms, sns, bot, pool, developer, hacker, spamDusting, exchange }
-
-// SNS-only wallet — name is the primary .sol domain
-// { name: 'solanatracker.sol', sns: { domain: 'solanatracker.sol' }, tags: ['sns'], type: 'sns' }
-
-// KOL + SNS — higher-priority label keeps name; domain still on sns
-// { name: 'SomeKolName', sns: { domain: 'solanatracker.sol' }, tags: ['kol', 'sns'], type: 'kol' }
-```
-
-#### Token-scoped PnL enrichment
-
-Token-scoped endpoints (`/tokens/:token/traders`, `first-buyers`, token batch) return PnL nested as `pnl: { token, wallet }` so each row makes it unambiguous which scope each PnL belongs to. Identity enrichment (pool, developer, platforms) is always on.
-
-```typescript
-const traders = await client.getPnlV2TokenTraders('mint', { limit: 10 });
-// traders.traders[0].pnl.token  → { realized, unrealized, total }
-// traders.traders[0].pnl.wallet → { realized, unrealized, total, invested, proceeds, totalTrades, tokensTraded }
-// traders.traders[0].identity   → pool / developer / platform tags
-```
-
-#### Token holders enrichment
-
-`getTokenHolders` now accepts an optional `enrich` parameter to add identity and/or wallet PnL:
-
-```typescript
-const holders = await client.getTokenHolders('mint', 'all');
-// holders.enrich → ['identity', 'walletPnl']
-// holders.accounts[0].identity → pool / developer tags
-// holders.accounts[0].pnl?.wallet → lifetime wallet PnL
-// holders.accounts[0].pnl?.token  → per-token PnL
-```
-
-#### Quick reference
-
-```typescript
-// Leaderboards
-const kols = await client.getPnlV2KOLLeaderboard({ sort: 'total', direction: 'desc', limit: 20 });
-const kolsPeriod = await client.getPnlV2KOLPeriodLeaderboard({ period: '30d', limit: 20 });
-const cal = await client.getPnlV2KOLCalendar({ year: 2026, month: 4 });
-const day = await client.getPnlV2KOLByDate({ date: '2026-04-01' });
-const top = await client.getPnlV2TopTraders({ days: 90, limit: 50, pnlMode: 'adjusted' });
-
-// Token (enriched with identity + wallet PnL automatically)
-const traders = await client.getPnlV2TokenTraders('tokenMint', { limit: 50, sort: 'pnl', direction: 'desc' });
-const firstBuyers = await client.getPnlV2TokenFirstBuyers('tokenMint', { sort: 'first_trade', direction: 'asc' });
-
-// Wallet (narrow with queued guard when needed)
-const overview = await client.getPnlV2WalletOverview('walletAddress', {
-  pnlMode: 'adjusted',
-  currency: 'sol', // also: 'usd' (default) | 'eur' — on overview, history, and performance
-});
-if ('queued' in overview && overview.queued) {
-  console.log(overview.message);
-} else {
-  console.log(overview.summary.roi, overview.identity, overview.pnlMode, overview.currency);
-}
-
-const history = await client.getPnlV2WalletHistory('walletAddress', { period: '30d', limit: 30 });
-const performance = await client.getPnlV2WalletPerformance('walletAddress', { period: '90d' });
-const onePosition = await client.getPnlV2WalletTokenPosition('walletAddress', 'tokenMint', { pnlMode: 'adjusted' });
-const highlights = await client.getPnlV2WalletHighlights('walletAddress');
-const risk = await client.getPnlV2WalletRisk('walletAddress');
-const positions = await client.getPnlV2WalletPositions('walletAddress', { filter: 'holding', limit: 50, pnlMode: 'adjusted' });
-const chart = await client.getPnlV2WalletChart('walletAddress', { time_from: startUnix, time_to: endUnix });
-
-// Batch (limits: 100 wallet summaries, 100 tokens per wallet batch, 200 wallets per token batch, 200 pairs)
-await client.batchPnlV2WalletSummaries(['walletA', 'walletB']); // wallet-level summary + identity + raw tags
-await client.batchPnlV2WalletTokenPositions('walletAddress', ['mintA', 'mintB'], { pnlMode: 'adjusted' });
-await client.batchPnlV2TokenWalletPositions('tokenMint', ['walletA', 'walletB'], { pnlMode: 'adjusted' });
-await client.batchPnlV2PositionPairs([{ wallet: 'walletA', token: 'mintA' }], { pnlMode: 'raw' });
-
-// Token holders with enrichment (not PnL v2 — different endpoint)
-const holders = await client.getTokenHolders('tokenMint', 'all');
-```
-
-See [`examples/pnl-v2.ts`](examples/pnl-v2.ts) for runnable snippets.
-
-### Jupiter DCA REST (`/dca/*`)
-
-Track Jupiter recurring (DCA) orders. All endpoints accept an optional `program` query param (default `"jupiter"`); aliases `dex` and `platform` are also supported server-side.
-
-| Method | Description |
-|--------|-------------|
-| `getDcaPrograms()` | List supported DCA programs (`id`, `label`, `programId`) |
-| `getDcaWallet(wallet, params?)` | Wallet's DCA orders + status summary (active/paused/completed/pending) |
-| `getDcaWalletOrders(wallet, params?)` | Paginated wallet orders (no summary) |
-| `getDcaOrder(address, params?)` | Single DCA account by pubkey |
-| `getDcaTokenFlow(mint, params?)` | Aggregate buyer/seller flow for a token |
-| `getDcaTokenBuyers(mint, params?)` | Orders **buying** the token (output mint) |
-| `getDcaTokenSellers(mint, params?)` | Orders **selling** the token (input mint) |
-| `getDcaTokenUsers(mint, params?)` | Top wallets by DCA activity on a token |
-| `getDcaPair(inputMint, outputMint, params?)` | Orders for a specific input → output pair |
-
-Common list params:
-
-- `limit` — wallet/pair: 1–100 (default 50); token endpoints: 1–1000 (default 200)
-- `cursor` — opaque pagination cursor (last `address` from previous page)
-- `sort` / `sortBy` — `volume` (default) | `deposited` | `remaining` | `progress` | `recent` | `created` | `status`
-- `status` — `active` | `paused` | `completed` | `pending` | `all` (default `all`)
-
-```typescript
-// Wallet orders with status summary
-const wallet = await client.getDcaWallet('walletAddress', {
-  status: 'active',
-  sort: 'recent',
-  limit: 25,
-});
-console.log(`${wallet.summary.active} active / ${wallet.summary.completed} completed`);
-
-// Top buyers of a token (token = output mint)
-const buyers = await client.getDcaTokenBuyers('tokenMint', { limit: 50 });
-
-// All orders for a USDC → SOL pair
-const pair = await client.getDcaPair(
-  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
-  'So11111111111111111111111111111111111111112',  // SOL
-  { sort: 'volume' },
-);
-```
-
-Each `DcaOrder` includes program info, status (`active` | `paused` | `completed` | `pending`), direction (`buying` | `selling` | `mixed`), the input/output `DcaToken` (with USD price when available), human-readable amounts (`deposited`, `used`, `remaining`, `received`, `perCycle`, `volume`) plus their `*Usd` siblings, `frequency`, `progressPercent`, `createdAt`/`nextCycleAt` ISO timestamps, and a `raw` map of base-units strings.
-
-### Jupiter DCA Datastream (`dca:jupiter:*`)
-
-Subscribe to live DCA events on Premium, Business, and Enterprise plans. Each event is delivered to the global room (`dca:jupiter`), the matching event-type room, and any scoped rooms that apply.
-
-```typescript
-// All Jupiter DCA events
-ds.subscribe.dca.all().on((ev) => { /* … */ });
-
-// Cycle fills only
-ds.subscribe.dca.filled().on((ev) => {
-  console.log(`fill ${ev.address}: $${ev.usd?.inAmountUsd} → $${ev.usd?.outAmountUsd}`);
-});
-
-// Other event-type rooms
-ds.subscribe.dca.opened();
-ds.subscribe.dca.closed();
-ds.subscribe.dca.deposit();
-ds.subscribe.dca.withdraw();
-ds.subscribe.dca.collectedFee();
-ds.subscribe.dca.position(); // throttled account snapshots, no signature
-
-// Scoped rooms
-ds.subscribe.dca.token('tokenMint').buyers();
-ds.subscribe.dca.token('tokenMint').sellers();
-ds.subscribe.dca.wallet('walletAddress');
-ds.subscribe.dca.order('dcaAccountAddress');
-```
-
-Transaction events (`Opened`, `Filled`, `Closed`, `Deposit`, `Withdraw`, `CollectedFee`) carry `eventName`, `signature`, on-chain raw amounts as strings, a `usd` block, optional `prices` map, and a snapshot `order: DcaOrder`. Position snapshots have no `eventName` or `signature`; they include `writeVersion` and a full `order: DcaOrder`.
-
-```typescript
-import type { DcaStreamEvent, DcaPositionEvent } from '@solana-tracker/data-api';
-
-function isPositionSnapshot(ev: DcaStreamEvent): ev is DcaPositionEvent {
-  return 'writeVersion' in ev;
-}
-```
-
-See [`examples/dca.ts`](examples/dca.ts) and [`examples/dca-datastream.ts`](examples/dca-datastream.ts) for runnable snippets.
-
-### Lighthouse
-
-```typescript
-const markets = await client.getLighthouse();
-// markets[0].stats['24h'].volume.total, .changePct, .transactions, .wallets, .tokensCreated, .migrations
-```
-
-### Whale & KOL Trades
-
-```typescript
-const whales = await client.getWhaleTrades({ minVolume: 5000, limit: 100, showMeta: true });
-const kols = await client.getKolTrades({ minVolume: 0, limit: 100 });
-const tokenKols = await client.getKolTradesByToken('tokenMint', { hideArb: true });
-// Each trade may include identity: { name, twitter, avatar }
-```
-
-### Prediction Markets REST (Beta)
+Use `PredictionMarketsClient` for the separate Kalshi and Polymarket API. It shares your Data API key and defaults to `https://prediction-market-api.solanatracker.io`.
 
 ```typescript
 import { PredictionMarketsClient } from '@solana-tracker/data-api';
 
-const pm = new PredictionMarketsClient({ apiKey: 'YOUR_API_KEY' });
-// Same Data API key; separate host: https://prediction-market-api.solanatracker.io
+const apiKey = process.env.SOLANA_TRACKER_API_KEY;
+if (!apiKey) throw new Error('Set SOLANA_TRACKER_API_KEY');
+const markets = new PredictionMarketsClient({ apiKey });
 
-const markets = await pm.getMarkets({ exchange: 'polymarket', status: 'active', limit: 20 });
-const snapshot = await pm.getMarketSnapshot('ticker-or-token-id');
-const trades = await pm.getGlobalTrades({ limit: 50 });
-const wallet = await pm.getAccountOverview('0x...'); // Polymarket wallet analytics
+async function main() {
+  const page = await markets.getMarkets({
+    exchange: 'polymarket',
+    status: 'active',
+    limit: 10,
+  });
+  console.log(page.data);
+}
+
+main().catch(() => {
+  console.error('Unable to load prediction markets');
+  process.exitCode = 1;
+});
 ```
 
-Query parameters use snake_case on the wire (e.g. `event_ticker`, `min_volume`) and are typed on the `Pm*Params` interfaces. Response bodies use camelCase.
+`getMarketTradersByExchange(ticker, { exchange })` returns a trader page for `'polymarket'` / `'poly'` and aggregate trade statistics for `'kalshi'`. When the exchange is not known at compile time, narrow the union with `'data' in result`. Live subscriptions use `stream.subscribe.pm.*`. This API is in beta; see the [examples](./examples/prediction-markets.ts) and [exported types](./src/prediction-markets-interfaces.ts).
 
-See [`examples/prediction-markets.ts`](examples/prediction-markets.ts) and the [Prediction Markets docs](https://docs.solanatracker.io/prediction-markets/overview).
+## Errors
 
-### Top Traders Endpoints
-
-```typescript
-// Get the most profitable traders across all tokens
-const topTraders = await client.getTopTraders(1, true, 'total');
-
-// Get top 100 traders by PnL for a token
-const tokenTopTraders = await client.getTokenTopTraders('tokenAddress');
-```
-
-### Events Endpoints (Live Data)
-
-```typescript
-// Get raw event data for live processing
-// NOTE: For non-live statistics, use getTokenStats() instead which is more efficient
-const events = await client.getEvents('tokenAddress');
-console.log('Total events:', events.length);
-
-// Get events for a specific pool
-const poolEvents = await client.getPoolEvents('tokenAddress', 'poolAddress');
-
-// Process events into statistics using the processEvents utility
-import { processEventsAsync } from '@solana-tracker/data-api';
-
-const stats = await processEvents(events);
-console.log('1h stats:', stats['1h']);
-console.log('24h volume:', stats['24h']?.volume.total);
-```
-
-### Additional Endpoints
-
-```typescript
-// Get detailed stats for a token
-const tokenStats = await client.getTokenStats('tokenAddress');
-
-// Get detailed stats for a specific token and pool
-const poolStats = await client.getPoolStats('tokenAddress', 'poolAddress');
-
-// Get remaining API credits
-const credits = await client.getCredits();
-console.log('Remaining credits:', credits.credits);
-
-// Get subscription information
-const subscription = await client.getSubscription();
-console.log('Plan:', subscription.plan);
-console.log('Credits:', subscription.credits);
-console.log('Status:', subscription.status);
-console.log('Next billing date:', subscription.next_billing_date);
-```
-
-## Error Handling
-
-The library includes specific error types for robust error handling with enhanced error details:
+REST methods reject with typed errors. Check subclasses before `DataApiError`:
 
 ```typescript
 import {
-  Client,
   DataApiError,
   RateLimitError,
   ValidationError,
 } from '@solana-tracker/data-api';
 
 try {
-  const tokenInfo = await client.getTokenInfo('invalid-address');
+  await client.getTokenInfo(mint);
 } catch (error) {
   if (error instanceof RateLimitError) {
-    console.error(
-      'Rate limit exceeded. Retry after:',
-      error.retryAfter,
-      'seconds'
-    );
+    console.error('Rate limited; retry after', error.retryAfter, 'seconds');
   } else if (error instanceof ValidationError) {
-    console.error('Validation error:', error.message);
+    console.error('Invalid request parameters');
   } else if (error instanceof DataApiError) {
-    console.error('API error:', error.message, 'Status:', error.status);
-
-    // Access detailed error information
-    if (error.details) {
-      console.error('Error details:', error.details);
-    }
+    console.error('Data API request failed with status', error.status);
   } else {
-    console.error('Unexpected error:', error);
+    throw error;
   }
 }
 ```
 
-## Type Definitions
+`DataApiError` exposes `message`, optional `status`, `code`, and `details`. `RateLimitError.retryAfter` can be undefined. The REST client does not automatically retry requests; apply your own bounded retry policy. Stream failures use the `error` event.
 
-#### Type Updates:
+## Compatibility
 
-```typescript
-// Enhanced SearchResult with holder distribution
-interface SearchResult {
-  // ... existing fields
-  top10?: number; // % held by top 10 holders
-  dev?: number; // % held by developer
-  insiders?: number; // % held by insiders
-  snipers?: number; // % held by snipers
-  jupiter?: boolean; // Jupiter verification
-  verified?: boolean; // General verification
-  
-  socials?: {
-    twitter?: string;
-    telegram?: string;
-    discord?: string;
-    website?: string;
-    // ... more social media links
-  };
+The new activity API is opt-in. Existing `getTokenTrades`, `getPoolTrades`, `getUserTokenTrades`, and `getUserPoolTrades` retain their positional signatures, request serialization, and swaps-only behavior. `TradesResponse` keeps its legacy numeric cursor type; new history methods use `TradeHistoryResponse` with numeric, string, or null cursors.
 
-  // Coin Communities
-  hasCoinCommunity?: boolean;
-  communityMessages?: number;
-  
-  fees?: {
-    total?: number; // Total fees in SOL
-    totalTrading?: number; // Trading fees in SOL
-    totalTips?: number; // Priority tips in SOL
-  };
-}
+Compatibility checks pass against the published 0.3.1, 0.3.2, and 0.4.0 packages. Earlier releases had migration changes before this update, including the removal of 0.3.0's PnL wallet status/refresh methods; see the [release notes](./CHANGELOG.md#compatibility).
 
-// Enhanced SearchResponse with pagination (generic - defaults to SearchResult, TokenDetailResponse when format=full)
-interface SearchResponse<T = SearchResult> {
-  status: string;
-  data: T[];
-  total?: number;
-  pages?: number;
-  page?: number;
-  nextCursor?: string; // For cursor-based pagination
-  hasMore?: boolean;
-}
+For existing integrations:
 
-// Deployer tokens response (generic - defaults to DeployerToken, TokenDetailResponse when format=full)
-interface DeployerTokensResponse<T = DeployerToken> {
-  total: number;
-  tokens: T[];
-}
+- Existing transaction rooms remain swaps-only. Identity enrichment uses separate `:enriched` rooms.
+- `getMarketTraders()` retains its existing signature; use `getMarketTradersByExchange()` for exchange-specific return types.
+- Prefer `subscribe.wallet(wallet).balance()` and `.tokenBalance(mint)` over the deprecated helpers under `subscribe.tx.wallet(wallet)`.
+- Prefer `subscribe.price.aggregated(mint)` over deprecated `subscribe.price.token(mint)`; pool-specific prices remain available.
+- Risk entries use `wallet`; the deprecated `address` alias remains normalized for 0.3 consumers, and omitted bundler categories are normalized to empty categories.
 
-// Deployer endpoint parameters
-interface DeployerParams {
-  page?: number;
-  limit?: number; // max 500, max 100 when format=full
-  market?: string | string[]; // Single or multiple markets
-  launchpad?: string | string[]; // Single or multiple launchpads
-  format?: 'full'; // Return full token objects
-}
+## Development
 
-// Paginated token holders response
-interface PaginatedTokenHoldersResponse {
-  total: number;
-  accounts: PaginatedHolder[];
-  cursor: string;
-  hasMore: boolean;
-  limit: number;
-}
+From a local checkout:
 
-interface PaginatedHolder {
-  wallet: string;
-  account: string;
-  amount: number;
-  value: {
-    quote: number;
-    usd: number;
-  };
-  percentage: number;
-}
-
-// Aggregated price update structure
-interface AggregatedPriceUpdate {
-  token: string;
-  timestamp: number;
-  price: number;
-  pool: string;
-  aggregated: {
-    median: number;
-    average: number;
-    min: number;
-    max: number;
-    poolCount: number;
-  };
-  topPools: Array<{
-    poolId: string;
-    price: number;
-    liquidity: number;
-    market: string;
-  }>;
-}
-
-// Developer holding update structure
-interface DevHoldingUpdate {
-  token: string;
-  creator: string;
-  amount: string;
-  percentage: number;
-  previousPercentage: number;
-  timestamp: number;
-}
-
-// Top holder information
-interface TopHolder {
-  address: string;
-  amount: string;
-  percentage: number;
-}
-
-// Top 10 holders update structure
-interface Top10HoldersUpdate {
-  token: string;
-  holders: TopHolder[];
-  totalPercentage: number;
-  previousPercentage: number | null;
-  timestamp: number;
-}
-
-// Snipers chart data
-interface SnipersChartData {
-  percentage: number;
-  time: number;
-}
-
-interface SnipersChartResponse {
-  snipers: SnipersChartData[];
-}
-
-// Insiders chart data
-interface InsidersChartData {
-  percentage: number;
-  time: number;
-}
-
-interface InsidersChartResponse {
-  insiders: InsidersChartData[];
-}
-
-// Bundlers chart data
-interface BundlersChartData {
-  percentage: number;
-  time: number;
-}
-
-interface BundlersChartResponse {
-  bundlers: BundlersChartData[];
-}
+```sh
+npm install
+npm run build
+npm run typecheck
+npm run typecheck:examples
+npm test -- --runInBand
+npm run test:compatibility
+npm run test:compatibility:legacy
+npm run test:package
 ```
 
-## WebSocket Data Stream Events
+The build writes CommonJS, ESM, and declarations to `dist/`. To use a local build in another project, run `npm pack` here and install the resulting tarball in that project.
 
-The Datastream extends the standard EventEmitter interface, allowing you to listen for various events:
+`test:compatibility` compares public types, method signatures, REST behavior, and stream helpers with revision `4acef8e` (0.4.0). `test:compatibility:legacy` checks 0.3.1 and revision `42f931d` (0.3.2); keep those references available in your clone. You can also pass an extracted npm package directory to `node tests/compatibility.cjs` to check a published artifact. `test:package` checks the packed package's imports and TypeScript consumers. These checks run locally and do not require service credentials.
 
-```typescript
-// Connection events
-dataStream.on('connected', () => console.log('Connected to WebSocket server'));
-dataStream.on('disconnected', (socketType) =>
-  console.log(`Disconnected: ${socketType}`)
-);
-dataStream.on('reconnecting', (attempt) =>
-  console.log(`Reconnecting: attempt ${attempt}`)
-);
-dataStream.on('error', (error) => console.error('Error:', error));
+### Optional live checks
 
-// Data events
-dataStream.on('latest', (data) => console.log('New token:', data));
-dataStream.on(`price:aggregated:${tokenAddress}`, (data) =>
-  console.log('Aggregated price update:', data)
-); // NEW - RECOMMENDED
-dataStream.on(`price-by-token:${tokenAddress}`, (data) =>
-  console.log('Price update (deprecated - auto-switches to new main pool):', data)
-);
-dataStream.on(`price:${tokenAddress}`, (data) =>
-  console.log('Price update:', data)
-);
-dataStream.on(`price:${poolAddress}`, (data) =>
-  console.log('Price update:', data)
-);
-dataStream.on(`transaction:${tokenAddress}`, (data) =>
-  console.log('New transaction:', data)
-);
-dataStream.on(`wallet:${walletAddress}`, (data) =>
-  console.log('Wallet transaction:', data)
-);
-dataStream.on(`wallet:${walletAddress}:balance`, (data) =>
-  console.log('Wallet balance update:', data)
-);
-dataStream.on(`wallet:${walletAddress}:${tokenAddress}:balance`, (data) =>
-  console.log('Token balance update:', data)
-);
-dataStream.on('graduating', (data) => console.log('Graduating token:', data));
-dataStream.on('graduated', (data) => console.log('Graduated token:', data));
-dataStream.on(`metadata:${tokenAddress}`, (data) =>
-  console.log('Metadata update:', data)
-);
-dataStream.on(`holders:${tokenAddress}`, (data) =>
-  console.log('Holders update:', data)
-);
-dataStream.on(`token:${tokenAddress}`, (data) =>
-  console.log('Token update (all pools):', data)
-);
-dataStream.on(`token:${tokenAddress}:primary`, (data) =>
-  console.log('Token update (primary pool - auto-switches to new main pool):', data)
-);
-dataStream.on(`pool:${poolId}`, (data) => console.log('Pool update:', data));
-dataStream.on(`sniper:${tokenAddress}`, (data) =>
-  console.log('Sniper update:', data)
-);
-dataStream.on(`insider:${tokenAddress}`, (data) =>
-  console.log('Insider update:', data)
-);
-dataStream.on(`stats:token:${tokenAddress}`, (data) =>
-  console.log('Token stats:', data)
-);
-dataStream.on(`stats:pool:${poolId}`, (data) =>
-  console.log('Pool stats:', data)
-);
+Live scripts require Node.js 18+ and authorized service access. They make read-only requests and are separate from the default test suite.
+
+```sh
+# Keyless REST host that you are authorized to access.
+npm run test:live -- https://your-authorized-host.example /tmp/sdk-live-results.json
+
+# Set SOLANA_TRACKER_WS_URL securely in your environment first.
+npm run test:live:stream -- /tmp/sdk-live-stream-results.json
 ```
 
-### Connection Management
-
-```typescript
-// Connect to the WebSocket server
-await dataStream.connect();
-
-// Check connection status
-const isConnected = dataStream.isConnected();
-
-// Disconnect
-dataStream.disconnect();
-```
-
-## Subscription Plans
-
-Solana Tracker offers a range of subscription plans with varying rate limits:
-
-| Plan            | Price       | Requests/Month | Rate Limit |
-| --------------- | ----------- | -------------- | ---------- |
-| Free            | Free        | 10,000         | 1/second   |
-| Advanced        | €50/month   | 200,000        | None       |
-| Pro             | €200/month  | 1,000,000      | None       |
-| Premium         | €397/month  | 10,000,000     | None       |
-| Business        | €599/month  | 25,000,000     | None       |
-| Enterprise      | €1499/month | 100,000,000    | None       |
-| Enterprise Plus | Custom      | Unlimited      | None       |
-
-Visit [Solana Tracker](https://www.solanatracker.io/account/data-api) to sign up and get your API key.
-
-## WebSocket Access
-
-WebSocket access (via the Datastream) is available for Premium, Business, and Enterprise plans.
+REST checks cover history filters, pagination, liquidity, legacy trades, and representative endpoint families. They send no key and refuse redirects to other hosts. The 90-second stream check validates received LP/enriched rows and heartbeat replies, reporting quiet rooms separately. It exercises the Node socket path; worker behavior has local test coverage. Prediction Markets requires separate live verification. Reports exclude the connection token; keep credentials out of committed test fixtures.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+MIT, as declared in [`package.json`](./package.json).

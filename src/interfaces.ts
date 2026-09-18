@@ -761,10 +761,89 @@ export interface TradeTransaction {
   };
 }
 
+/** Event selection on the four token-scoped trade history routes. */
+export type TradeEvents = 'trades' | 'all' | 'liquidity';
+
+/** LP modes require an explicit opt-in; an omitted events field means swaps. */
+export type TradeParams<E extends TradeEvents = TradeEvents> = TradeQueryParams &
+  (E extends 'trades' ? { events?: E } : { events: E });
+
+interface TradeQueryParams {
+  /** Keep scope, events and sortDirection unchanged when reusing nextCursor. */
+  cursor?: number | string;
+  /** Page size: 1–500; server default: 250. */
+  limit?: number;
+  sortDirection?: 'ASC' | 'DESC';
+  enrich?: 'identity' | 'all' | '*' | 'pool' | 'developer';
+  /** Adds token metadata to swaps only. */
+  showMeta?: boolean;
+  /** Retained for existing API consumers. */
+  parseJupiter?: boolean;
+  /** Filters swap legs; liquidity actions are retained. */
+  hideArb?: boolean;
+}
+
+export interface LiquidityTokenAmount {
+  address: string;
+  /** Exact decimal token amount. Do not coerce to a floating-point number. */
+  amount: string;
+  amountRaw: string;
+  decimals: number;
+  feeAmountRaw?: string;
+  transferredAmountRaw?: string;
+}
+
+export interface LiquidityEvent {
+  tx: string;
+  type: 'add_liquidity' | 'remove_liquidity';
+  program: string;
+  programId: string;
+  instruction: string;
+  pool: string;
+  wallet: string;
+  /** Unix milliseconds (live events can differ from confirmed REST history). */
+  time: number;
+  slot: number;
+  amountBasis: 'transfer' | 'principal';
+  tokens: LiquidityTokenAmount[];
+  /** Present when identity enrichment is requested; unknown wallets return null. */
+  identity?: PnlV2Identity | null;
+}
+
+/** Live LP activity is provisional at processed commitment. */
+export interface LiquidityUpdate extends LiquidityEvent {
+  /** Incomplete lookup; no later identity correction is sent. */
+  identityStatus?: 'partial';
+}
+
+export interface EnrichedStreamOptions {
+  /** Subscribe to the :enriched room for current wallet identity. */
+  enriched?: boolean;
+}
+
+/** Identity fields on the opt-in history API; legacy Trade keys stay unchanged. */
+export interface EnrichedTrade extends Trade {
+  identity?: PnlV2Identity | null;
+}
+
+export type TradeEvent = EnrichedTrade | LiquidityEvent;
+export type TradeEventFor<E extends TradeEvents> =
+  E extends 'liquidity' ? LiquidityEvent : E extends 'all' ? TradeEvent : EnrichedTrade;
+
+/** Legacy swaps-only response. Retains the 0.4 numeric cursor type. */
 export interface TradesResponse {
   trades: Trade[];
   nextCursor?: number;
   hasNextPage?: boolean;
+}
+
+/** Exact history response used by the opt-in trade history methods. */
+export interface TradeHistoryResponse<T extends TradeEvent = TradeEvent> {
+  trades: T[];
+  /** Timestamp for swaps; opaque cursor for mixed/LP feeds; null at the end. */
+  nextCursor?: number | string | null;
+  hasNextPage?: boolean;
+  sortDirection?: 'ASC' | 'DESC';
 }
 
 export interface WalletTradesResponse {

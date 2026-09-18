@@ -1,11 +1,12 @@
 /**
  * Lighthouse — live memecoin market activity across Solana launchpads and DEXs.
  */
+import { requireEnv } from './config';
 import { Client } from '@solana-tracker/data-api';
 import { handleError, formatCurrency } from './utils';
 
 const client = new Client({
-  apiKey: 'YOUR_API_KEY_HERE',
+  apiKey: requireEnv('SOLANA_TRACKER_API_KEY'),
 });
 
 /**
