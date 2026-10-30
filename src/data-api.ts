@@ -9,6 +9,7 @@ import {
   DeployerParams,
   SearchParams,
   SearchResponse,
+  SearchTokenResult,
   TokenOverview,
   PriceData,
   PriceHistoryData,
@@ -18,7 +19,11 @@ import {
   WalletBasicResponse,
   TradesResponse,
   TradeParams,
+  TradeCurrency,
   TradeHistoryResponse,
+  AccountTransfersParams,
+  AccountTransfersResponse,
+  GroupedAccountTransfersResponse,
   TradeEvents,
   TradeEventFor,
   TradeEvent,
@@ -555,9 +560,9 @@ export class Client {
    * @returns Search results (TokenDetailResponse items when format=full)
    */
   async searchTokens(params: SearchParams & { format: 'full' }): Promise<SearchResponse<TokenDetailResponse>>;
-  async searchTokens(params: SearchParams): Promise<SearchResponse>;
-  async searchTokens(params: SearchParams): Promise<SearchResponse | SearchResponse<TokenDetailResponse>> {
-    return this.request<SearchResponse>(`/search${this.buildQueryString(params)}`);
+  async searchTokens(params: SearchParams): Promise<SearchResponse<SearchTokenResult>>;
+  async searchTokens(params: SearchParams): Promise<SearchResponse<SearchTokenResult> | SearchResponse<TokenDetailResponse>> {
+    return this.request<SearchResponse<SearchTokenResult>>(`/search${this.buildQueryString(params)}`);
   }
 
   /**
@@ -899,7 +904,17 @@ export class Client {
     if (params.sortDirection !== undefined && !['ASC', 'DESC'].includes(params.sortDirection)) {
       throw new ValidationError('sortDirection must be ASC or DESC');
     }
-    return this.buildQueryString(params);
+    const currencies: TradeCurrency[] = ['usd', 'eur', 'sol'];
+    // The API reads currency case-insensitively.
+    // null is left out, as before.
+    const currency = params.currency == null ? undefined : String(params.currency).toLowerCase();
+    if (currency !== undefined && !currencies.includes(currency as TradeCurrency)) {
+      throw new ValidationError(`currency must be one of: ${currencies.join(', ')}`);
+    }
+    if (params.marketCap != null && typeof params.marketCap !== 'boolean') {
+      throw new ValidationError('marketCap must be true or false');
+    }
+    return this.buildQueryString({ ...params, currency });
   }
 
   // ======== TRADE ENDPOINTS ========
@@ -1134,6 +1149,179 @@ export class Client {
     this.validatePublicKey(owner, 'owner');
     const query = this.buildTradeQuery(params);
     return this.request<TradeHistoryResponse<TradeEvent>>(`/trades/${tokenAddress}/by-wallet/${owner}${query}`);
+  }
+
+  // ======== TRANSFER ENDPOINTS ========
+
+  /** Validate transfer filters with the server's rules, so a bad request fails before it is sent. */
+  private buildTransfersQuery(input: AccountTransfersParams): string {
+    const query: Record<string, string> = {};
+    // Like the API, null and '' mean not set.
+    const params: AccountTransfersParams = {};
+    for (const [key, value] of Object.entries(input) as [keyof AccountTransfersParams, unknown][]) {
+      if (value !== null && value !== undefined && value !== '') (params as Record<string, unknown>)[key] = value;
+    }
+    const choice = (name: keyof AccountTransfersParams, choices: string[]) => {
+      const value = params[name];
+      if (value === undefined) return;
+      // The API reads these case-insensitively.
+      const choice = typeof value === 'string' ? value.toLowerCase() : value;
+      if (typeof choice !== 'string' || !choices.includes(choice)) {
+        throw new ValidationError(`${name} must be one of: ${choices.join(', ')}`);
+      }
+      query[name] = choice;
+    };
+    const integer = (name: keyof AccountTransfersParams, min: number, max: number, message: string) => {
+      const value = params[name];
+      if (value === undefined) return undefined;
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
+        throw new ValidationError(`${name} ${message}`);
+      }
+      query[name] = String(value);
+      return value;
+    };
+    const amount = (name: keyof AccountTransfersParams) => {
+      const value = params[name];
+      if (value === undefined) return undefined;
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+        throw new ValidationError(`${name} must be a non-negative number`);
+      }
+      query[name] = String(value);
+      return value;
+    };
+    const flag = (name: keyof AccountTransfersParams) => {
+      const value = params[name];
+      if (value === undefined) return;
+      if (typeof value !== 'boolean') throw new ValidationError(`${name} must be true or false`);
+      query[name] = String(value);
+    };
+    const addresses = (name: keyof AccountTransfersParams) => {
+      const value = params[name];
+      if (value === undefined) return;
+      const list = (Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [value])
+        .map((item) => (typeof item === 'string' ? item.trim() : item))
+        .filter((item) => item !== '');
+      if (list.length > 5) throw new ValidationError(`${name} accepts at most 5 addresses`);
+      for (const item of list) this.validatePublicKey(item as string, name);
+      if (list.length) query[name] = list.join(',');
+    };
+    const ordered = (low: number | undefined, high: number | undefined, lowName: string, highName: string) => {
+      if (low !== undefined && high !== undefined && low > high) {
+        throw new ValidationError(`${lowName} must be less than or equal to ${highName}`);
+      }
+    };
+
+    const valueFilter = params.minValue !== undefined || params.maxValue !== undefined;
+    const limit = integer('limit', 1, 1000, 'must be an integer from 1 to 1000');
+    if (valueFilter && limit !== undefined && limit > 100) {
+      throw new ValidationError('limit must be at most 100 with minValue or maxValue');
+    }
+    if (params.cursor !== undefined) {
+      if (typeof params.cursor !== 'string' || params.cursor.trim() === '') {
+        throw new ValidationError('cursor must be a non-empty string');
+      }
+      query.cursor = params.cursor;
+    }
+    choice('sortOrder', ['desc', 'asc']);
+    // Seconds only: a value past 1e11 is a millisecond timestamp, which the API rejects.
+    const timeMessage = 'must be a Unix timestamp in seconds (milliseconds are rejected)';
+    ordered(integer('start', 0, 1e11, timeMessage), integer('end', 0, 1e11, timeMessage), 'start', 'end');
+    const slotMessage = 'must be a non-negative integer';
+    ordered(
+      integer('startSlot', 0, Number.MAX_SAFE_INTEGER, slotMessage),
+      integer('endSlot', 0, Number.MAX_SAFE_INTEGER, slotMessage),
+      'startSlot', 'endSlot'
+    );
+    choice('direction', ['in', 'out', 'all']);
+    choice('type', ['sol', 'spl']);
+    if (params.mint !== undefined) {
+      this.validatePublicKey(params.mint, 'mint');
+      query.mint = params.mint;
+    }
+    choice('status', ['success', 'failed', 'any']);
+    choice('dex', ['exclude', 'include', 'only']);
+    addresses('from');
+    addresses('to');
+    addresses('counterparty');
+    addresses('excludeFrom');
+    addresses('excludeTo');
+    ordered(amount('minAmount'), amount('maxAmount'), 'minAmount', 'maxAmount');
+    ordered(amount('minValue'), amount('maxValue'), 'minValue', 'maxValue');
+    flag('historicPrices');
+    flag('grouped');
+    flag('excludeZero');
+    return this.buildQueryString(query);
+  }
+
+  /**
+   * Get the SOL and SPL transfers to and from a wallet, newest first.
+   * Transactions with DEX activity (swaps, liquidity adds and removes, pool fee
+   * claims) are left out unless `dex` is `include` or `only`.
+   * Pass `pagination.next` back as `cursor` with the same filters until
+   * `hasMore` is false; a filtered page can be empty while more remain.
+   * @param address Wallet address
+   * @param params Filters and pagination
+   * @returns Transfers, plus `transactions` when `grouped` is true
+   */
+  async getAccountTransfers(
+    address: string,
+    params: AccountTransfersParams & { grouped: true }
+  ): Promise<GroupedAccountTransfersResponse>;
+  async getAccountTransfers(
+    address: string,
+    params?: AccountTransfersParams & { grouped?: false }
+  ): Promise<AccountTransfersResponse>;
+  async getAccountTransfers(
+    address: string,
+    params?: AccountTransfersParams
+  ): Promise<AccountTransfersResponse | GroupedAccountTransfersResponse>;
+  async getAccountTransfers(
+    address: string,
+    params: AccountTransfersParams = {}
+  ): Promise<AccountTransfersResponse | GroupedAccountTransfersResponse> {
+    this.validatePublicKey(address, 'address');
+    const query = this.buildTransfersQuery(params);
+    return this.request<AccountTransfersResponse | GroupedAccountTransfersResponse>(
+      `/account/${address}/transfers${query}`
+    );
+  }
+
+  /**
+   * Page through a wallet's transfers with the same filters, one page per
+   * iteration, until the last page. Pages can be empty while more remain.
+   * Starts from `params.cursor` when given.
+   * @param address Wallet address
+   * @param params Filters; `cursor` is managed for you after the first page
+   */
+  iterateAccountTransfers(
+    address: string,
+    params: AccountTransfersParams & { grouped: true }
+  ): AsyncGenerator<GroupedAccountTransfersResponse, void, undefined>;
+  iterateAccountTransfers(
+    address: string,
+    params?: AccountTransfersParams & { grouped?: false }
+  ): AsyncGenerator<AccountTransfersResponse, void, undefined>;
+  iterateAccountTransfers(
+    address: string,
+    params?: AccountTransfersParams
+  ): AsyncGenerator<AccountTransfersResponse | GroupedAccountTransfersResponse, void, undefined>;
+  async *iterateAccountTransfers(
+    address: string,
+    params: AccountTransfersParams = {}
+  ): AsyncGenerator<AccountTransfersResponse | GroupedAccountTransfersResponse, void, undefined> {
+    let cursor = params.cursor;
+    const seen = new Set<string>(cursor ? [cursor] : []);
+    while (true) {
+      const page = await this.getAccountTransfers(address, { ...params, cursor });
+      yield page;
+      const next = page.pagination?.next;
+      if (!page.pagination?.hasMore || !next) return;
+      if (seen.has(next)) {
+        throw new DataApiError('Transfer pagination returned a cursor it already returned');
+      }
+      seen.add(next);
+      cursor = next;
+    }
   }
 
   // ======== CHART DATA ENDPOINTS ========

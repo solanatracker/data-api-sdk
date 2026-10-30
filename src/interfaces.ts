@@ -177,6 +177,10 @@ export interface PoolInfo {
   pumpfun?: {
     tokenProgram?: string;
     isMayhemMode?: boolean;
+    /** Quote mint of the curve. Pump.fun v3 coins can be quoted in another Pump.fun coin. */
+    quoteMint?: string;
+    /** 0 when quoted in SOL or a stablecoin; the quote coin's depth + 1 when quoted in a Pump.fun coin. */
+    quoteDepth?: number;
   };
   'pumpfun-amm'?: {
     tokenProgram?: string;
@@ -402,6 +406,7 @@ export interface SearchParams {
   page?: number;
   limit?: number;
   cursor?: string;
+  /** Result field to sort by, e.g. `createdAt`, `liquidityUsd`, `volume`, `migrationSeconds`. */
   sortBy?: string;
   sortOrder?: string;
   showAllPools?: boolean;
@@ -410,6 +415,10 @@ export interface SearchParams {
   // Creation Filters
   minCreatedAt?: number;
   maxCreatedAt?: number;
+  /** Token (mint) creation time, not the pool's. Unix seconds or milliseconds. */
+  minTokenCreatedAt?: number;
+  /** Token (mint) creation time, not the pool's. Unix seconds or milliseconds. */
+  maxTokenCreatedAt?: number;
   
   // Liquidity & Market Cap Filters
   minLiquidity?: number;
@@ -485,6 +494,13 @@ export interface SearchParams {
   maxBundlers?: number;
   minBundlerPercentage?: number;
   maxBundlerPercentage?: number;
+  /** Tokens held by bundler wallets. */
+  minBundlerBalance?: number;
+  /** Tokens held by bundler wallets. */
+  maxBundlerBalance?: number;
+
+  /** Quote token(s) by mint or symbol, e.g. `'SOL'` or `['SOL', 'USDC']`. */
+  quoteToken?: string | string[];
   
   // Risk Score Filters
   minRiskScore?: number;
@@ -520,6 +536,15 @@ export interface SearchParams {
   // Graduated Filters
   minGraduatedAt?: number;
   maxGraduatedAt?: number;
+
+  // Migration Filters
+  /**
+   * Seconds from token creation to migration, exclusive: `5` keeps tokens
+   * that took more than 5 seconds. Only migrated tokens have a value.
+   */
+  minMigrationSeconds?: number;
+  /** Seconds from token creation to migration, inclusive: `0` finds same-block migrations. */
+  maxMigrationSeconds?: number;
   
   /** Return full token objects (same shape as /tokens/:token). Max limit is capped at 100. */
   format?: 'full';
@@ -598,6 +623,7 @@ export interface SearchResult {
     name: string;
     curvePercentage?: number;
   };
+  /** Unix milliseconds of the on-chain migration; migrated tokens only. */
   graduatedAt?: number;
   /** Whether the token has monitored Coin Communities chat activity. */
   hasCoinCommunity?: boolean;
@@ -617,6 +643,12 @@ export interface SearchResult {
     "12h"?: { priceChangePercentage: number };
     "24h"?: { priceChangePercentage: number };
   };
+}
+
+/** A `searchTokens` result. Separate from `SearchResult` so that type's keys stay unchanged. */
+export interface SearchTokenResult extends SearchResult {
+  /** Seconds from token creation to migration (0 for the same block, may be fractional); migrated tokens only. */
+  migrationSeconds?: number | null;
 }
 
 export interface SearchResponse<T = SearchResult> {
@@ -781,7 +813,17 @@ interface TradeQueryParams {
   parseJupiter?: boolean;
   /** Filters swap legs; liquidity actions are retained. */
   hideArb?: boolean;
+  /**
+   * Adds `price` to each swap in this currency at the time of the trade.
+   * Swaps against SOL use their own amounts; others convert at that second.
+   */
+  currency?: TradeCurrency;
+  /** Adds `marketCap` to each swap (and `price`, in USD unless `currency` is set): `price` times the token's current supply. */
+  marketCap?: boolean;
 }
+
+/** Currencies the trade history `currency` option accepts. */
+export type TradeCurrency = 'usd' | 'eur' | 'sol';
 
 export interface LiquidityTokenAmount {
   address: string;
@@ -824,6 +866,10 @@ export interface EnrichedStreamOptions {
 /** Identity fields on the opt-in history API; legacy Trade keys stay unchanged. */
 export interface EnrichedTrade extends Trade {
   identity?: PnlV2Identity | null;
+  /** With `currency` or `marketCap: true`: the price in the response's `currency` at the trade's time; null when no rate was found. */
+  price?: number | null;
+  /** With `marketCap: true`: `price` times the token's current supply; null without a price. */
+  marketCap?: number | null;
 }
 
 export type TradeEvent = EnrichedTrade | LiquidityEvent;
@@ -844,6 +890,8 @@ export interface TradeHistoryResponse<T extends TradeEvent = TradeEvent> {
   nextCursor?: number | string | null;
   hasNextPage?: boolean;
   sortDirection?: 'ASC' | 'DESC';
+  /** Present when `currency` is set or `marketCap` is true (`usd` unless `currency` says otherwise). */
+  currency?: TradeCurrency;
 }
 
 export interface WalletTradesResponse {
@@ -2130,9 +2178,9 @@ export interface ChartDataParams {
   tokenAddress: string;
   /** Pool address (only for pool-specific charts) */
   poolAddress?: string;
-  /** Time interval (e.g., "1s", "1m", "1h", "1d") */
+  /** Time interval (e.g., "1s", "1m", "1h", "5h", "1d"). `5h` candles start at 00, 05, 10, 15 and 20 UTC. */
   type?: string;
-  /** Start time (Unix timestamp in seconds) */
+  /** Start time (Unix timestamp in seconds). Without `timeTo`, candles run to now. */
   timeFrom?: number;
   /** End time (Unix timestamp in seconds) */
   timeTo?: number;
@@ -2660,4 +2708,329 @@ export interface WhaleKolTradesResponse {
   sortDirection: 'DESC';
   /** Echoed request filter when the effective threshold is at least $1,000. */
   minVolume?: WhaleMinVolume;
+}
+
+// ======== TRANSFERS ========
+
+/** A USD price or value; null when none was found. */
+export interface TransferUsd {
+  usd: number | null;
+}
+
+/** Filters for `GET /account/{address}/transfers`. Address lists take up to 5 wallets or token accounts. */
+export interface AccountTransfersParams {
+  /** 1–1000; server default 100. At most 100 with `minValue` or `maxValue`. */
+  limit?: number;
+  /** `pagination.next` from the previous page. Send the same filters with it. */
+  cursor?: string;
+  /** Default `desc` (newest first). */
+  sortOrder?: 'desc' | 'asc';
+  /** Unix seconds, inclusive. Milliseconds are rejected. */
+  start?: number;
+  /** Unix seconds, inclusive. Milliseconds are rejected. */
+  end?: number;
+  /** Slot, inclusive. */
+  startSlot?: number;
+  /** Slot, inclusive. */
+  endSlot?: number;
+  /** Relative to the address. Default `all`. */
+  direction?: 'in' | 'out' | 'all';
+  /** `sol` for native SOL, `spl` for token transfers (wrapped SOL included). Default both. */
+  type?: 'sol' | 'spl';
+  /** Token mint. The wrapped SOL mint returns native SOL and wrapped SOL transfers. */
+  mint?: string;
+  /** Transaction outcome. Default `success`. */
+  status?: 'success' | 'failed' | 'any';
+  /**
+   * Transactions with DEX activity (swaps, liquidity adds and removes, pool fee claims).
+   * Default `exclude`; `include` keeps them, `only` returns just those.
+   */
+  dex?: 'exclude' | 'include' | 'only';
+  /** Sender address(es). */
+  from?: string | string[];
+  /** Receiver address(es). */
+  to?: string | string[];
+  /** Address(es) on either side. */
+  counterparty?: string | string[];
+  /** Sender address(es) to leave out. */
+  excludeFrom?: string | string[];
+  /** Receiver address(es) to leave out. */
+  excludeTo?: string | string[];
+  /** Token units (`uiAmount`). */
+  minAmount?: number;
+  /** Token units (`uiAmount`). */
+  maxAmount?: number;
+  /** USD value at the time of the transfer. Turns on `historicPrices`. */
+  minValue?: number;
+  /** USD value at the time of the transfer. Turns on `historicPrices`. */
+  maxValue?: number;
+  /** Adds `price` and `value` from the last 1-minute candle at most an hour before the transfer. */
+  historicPrices?: boolean;
+  /** Also returns `transactions`: the page's transfers grouped by signature. */
+  grouped?: boolean;
+  /** Drops zero-amount transfers. */
+  excludeZero?: boolean;
+}
+
+/** A platform profile on a wallet identity (Axiom, Photon, ...). */
+export interface WalletPlatformProfile {
+  userId?: string;
+  handle?: string;
+  displayName?: string;
+  avatar?: string;
+  twitter?: string;
+  verified?: boolean;
+}
+
+/** Wallet identity on transfers. Separate from `PnlV2Identity` so that type's keys stay unchanged. */
+export interface TransferIdentity extends PnlV2Identity {
+  /** Trader profiles keyed by platform. A wallet known only by these has `tags: []` and `type` set to the first platform. */
+  platformProfiles?: Record<string, WalletPlatformProfile>;
+}
+
+export interface AccountTransferToken {
+  name: string | null;
+  symbol: string | null;
+  mint: string;
+  image: string | null;
+  decimals: number;
+}
+
+export interface AccountTransferParty {
+  /** The account debited or credited: a wallet for SOL, a token account for SPL. */
+  address: string;
+  /** The wallet that owns `address`. */
+  owner: string;
+  /** Present when the wallet is known (KOL, exchange, pool, developer, SNS name). */
+  identity?: TransferIdentity;
+}
+
+export interface AccountTransfer {
+  /** null only if the archive returned none. */
+  signature: string | null;
+  status: 'success' | 'failed';
+  type: 'sol' | 'spl';
+  /** Relative to the requested address. */
+  direction: 'in' | 'out';
+  /** null for a side the transfer has no account for. */
+  from: AccountTransferParty | null;
+  to: AccountTransferParty | null;
+  token: AccountTransferToken;
+  /** Raw integer amount. */
+  amount: string;
+  /** Exact decimal amount. */
+  uiAmount: string;
+  decimals: number;
+  /** With `historicPrices` or a value filter only. */
+  price?: TransferUsd;
+  /** With `historicPrices` or a value filter only. */
+  value?: TransferUsd;
+  /** Block time in Unix seconds. */
+  timestamp: number | null;
+  slot: number | null;
+}
+
+/** One token's total in a grouped transaction, per direction. */
+export interface AccountTransferTokenTotal {
+  token: AccountTransferToken;
+  direction: 'in' | 'out';
+  amount: string;
+  uiAmount: string;
+  decimals: number;
+  /** With prices only. */
+  price?: TransferUsd;
+  /** With prices only. */
+  value?: TransferUsd;
+}
+
+/**
+ * One side (in or out) of a grouped transaction. A side with exactly one token
+ * names it; otherwise it counts its transfers in `legs`.
+ */
+export type AccountTransferSideTotal =
+  | {
+      /** With prices only. */
+      usd?: number | null;
+      legs: number;
+    }
+  | {
+      /** With prices only. */
+      usd?: number | null;
+      token: AccountTransferToken;
+      amount: string;
+      uiAmount: string;
+      decimals: number;
+      price?: TransferUsd;
+      value?: TransferUsd;
+    };
+
+export interface AccountTransferTransaction {
+  /** null only if the archive returned none. */
+  signature: string | null;
+  status: 'success' | 'failed';
+  timestamp: number | null;
+  slot: number | null;
+  /** `swap` when `dex` is true. */
+  type: 'swap' | 'transfer';
+  /** The transaction has DEX activity. */
+  dex: boolean;
+  direction: 'in' | 'out' | 'both' | 'swap';
+  /** Number of transfers. */
+  legs: number;
+  totals: {
+    /** With prices only. */
+    value?: TransferUsd;
+    in: AccountTransferSideTotal;
+    out: AccountTransferSideTotal;
+    /** In minus out. With prices only. */
+    net?: TransferUsd;
+    tokens: AccountTransferTokenTotal[];
+  };
+  /** Set when the wallet sent one token and received another. */
+  swap?: {
+    in: AccountTransferTokenTotal;
+    out: AccountTransferTokenTotal;
+  };
+  transfers: AccountTransfer[];
+}
+
+export interface AccountTransfersPagination {
+  /** Cursor for the next page; null at the end. */
+  next: string | null;
+  /** A filtered page can be empty while `hasMore` is still true. Keep paging. */
+  hasMore: boolean;
+  /** Transfers on this page. */
+  count: number;
+}
+
+export interface AccountTransfersResponse {
+  account: string;
+  transfers: AccountTransfer[];
+  pagination: AccountTransfersPagination;
+  /** Some prices are null because the lookup ran out of time. */
+  enrichmentStatus?: 'partial';
+}
+
+/** Response with `grouped: true`. */
+export interface GroupedAccountTransfersResponse extends Omit<AccountTransfersResponse, 'pagination'> {
+  grouped: true;
+  transactions: AccountTransferTransaction[];
+  pagination: Omit<AccountTransfersPagination, 'count'> & {
+    /** Transactions on this page. */
+    count: number;
+    transferCount: number;
+  };
+}
+
+/** Wallet, token and token+wallet transfer rooms. */
+export interface TransferStreamParty {
+  /** The account debited or credited: a wallet for SOL, a token account for SPL. */
+  address: string;
+  /** The wallet owning `address` (`address` itself for SOL). */
+  owner: string | null;
+  /** Raw balance of `address` after the transaction. */
+  postBalance?: string | null;
+}
+
+export interface StreamTransfer {
+  /** `signature:instruction:inner`; unique per transfer. */
+  id: string;
+  signature: string;
+  slot: number;
+  /** Unix seconds. */
+  timestamp: number | null;
+  commitment: 'processed';
+  instruction: number;
+  /** -1 for an outer instruction. */
+  inner: number;
+  type: 'sol' | 'spl';
+  program: 'system' | 'spl-token' | 'token-2022';
+  /** Wrapped SOL mint for SOL. */
+  mint: string;
+  /** null when the transaction does not say; `uiAmount` is then null too. */
+  decimals: number | null;
+  /** Raw integer amount, before any Token-2022 transfer fee. */
+  amount: string;
+  /** Exact decimal amount; null when `decimals` is unknown. */
+  uiAmount: string | null;
+  /** Token-2022 transfer fee, raw. */
+  fee?: string;
+  from: TransferStreamParty;
+  to: TransferStreamParty;
+  swapTx: boolean;
+  /** Relative to the room's wallet; set in wallet and token+wallet rooms. */
+  direction?: 'in' | 'out';
+}
+
+export interface StreamBalanceChange {
+  owner: string;
+  /** Token account, or the wallet itself for SOL. */
+  account: string;
+  mint: string;
+  program: 'system' | 'spl-token' | 'token-2022';
+  decimals: number;
+  /** Raw balance before the transaction. */
+  pre: string;
+  /** Raw balance after the transaction. */
+  post: string;
+  /** `post - pre`, raw; negative for outflows. */
+  change: string;
+  /** `swap`: the trader's traded mints; `transfer`: an account in a transfer; `other`: everything else. */
+  cause: 'swap' | 'transfer' | 'other';
+  /** The fee payer's SOL entry only: the transaction fee in lamports, included in `change`. */
+  fee?: string;
+}
+
+/** Token metadata on `:enriched` rooms. */
+export interface TransferStreamToken extends Omit<AccountTransferToken, 'decimals'> {
+  /** The transfer's or balance change's own `decimals`. */
+  decimals: number | null;
+}
+
+/** Fields `:enriched` rooms add to each transfer and balance change. */
+export interface TransferEnrichment {
+  token: TransferStreamToken;
+  /** Current USD price from the token's top pool; 1 for USDC/USDT/USD1. */
+  price: TransferUsd;
+  /** USD value of the amount (of `change` for balances; negative for outflows). */
+  value: TransferUsd;
+  /** SOL: price times circulating supply. null for USDC/USDT/USD1. */
+  marketCap: TransferUsd;
+}
+
+export interface EnrichedTransferStreamParty extends TransferStreamParty {
+  /** The owner's identity; null for a wallet with none. */
+  identity?: TransferIdentity | null;
+}
+
+export interface EnrichedStreamTransfer extends Omit<StreamTransfer, 'from' | 'to'>, TransferEnrichment {
+  from: EnrichedTransferStreamParty;
+  to: EnrichedTransferStreamParty;
+}
+
+export interface EnrichedStreamBalanceChange extends StreamBalanceChange, TransferEnrichment {
+  /** The owner's identity; null for a wallet with none. */
+  identity?: TransferIdentity | null;
+}
+
+/** One transaction on a transfer room. Provisional at processed commitment. */
+export interface TransferUpdate {
+  signature: string;
+  slot: number;
+  /** Unix seconds. */
+  timestamp: number | null;
+  commitment: 'processed';
+  /** A swap transaction: its traded legs are in the trade rooms; what remains (fees, tips, payouts) is here. */
+  swapTx: boolean;
+  transfers: StreamTransfer[];
+  /** The room's balance changes: the wallet's, the token's, or the wallet's of the token. */
+  balances: StreamBalanceChange[];
+}
+
+/** One transaction on a transfer `:enriched` room. */
+export interface EnrichedTransferUpdate extends Omit<TransferUpdate, 'transfers' | 'balances'> {
+  transfers: EnrichedStreamTransfer[];
+  balances: EnrichedStreamBalanceChange[];
+  /** A lookup missed its deadline; missing values are null. */
+  enrichmentStatus?: 'partial';
 }

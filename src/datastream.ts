@@ -20,6 +20,8 @@ import {
   TradeIdentity,
   LiquidityUpdate,
   EnrichedStreamOptions,
+  TransferUpdate,
+  EnrichedTransferUpdate,
   WhaleMinVolume,
 } from './interfaces';
 import {
@@ -213,6 +215,7 @@ class SubscriptionMethods {
   public price: PriceSubscriptions;
   public tx: TransactionSubscriptions;
   public liquidity: LiquiditySubscriptions;
+  public transfers: TransferSubscriptions;
   public stats: StatsSubscriptions;
   public volume: VolumeSubscriptions;
   public pnl: PnlSubscriptions;
@@ -224,6 +227,7 @@ class SubscriptionMethods {
     this.price = new PriceSubscriptions(datastream);
     this.tx = new TransactionSubscriptions(datastream);
     this.liquidity = new LiquiditySubscriptions(datastream);
+    this.transfers = new TransferSubscriptions(datastream);
     this.stats = new StatsSubscriptions(datastream);
     this.volume = new VolumeSubscriptions(datastream);
     this.pnl = new PnlSubscriptions(datastream);
@@ -868,6 +872,71 @@ class LiquiditySubscriptions {
 
   wallet(wallet: string, options?: EnrichedStreamOptions): SubscribeResponse<LiquidityUpdate> {
     return this.ds._subscribe<LiquidityUpdate>(enrichedRoom(`liquidity:wallet:${wallet}`, options));
+  }
+}
+
+const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
+// Other spellings of SOL. Transfer rooms name SOL by the wrapped SOL mint only.
+const NATIVE_SOL_ALIASES = new Set(['11111111111111111111111111111111', 'So11111111111111111111111111111111111111111']);
+
+/** Room segments are Solana addresses; anything else would name a room nobody publishes to. */
+function requireAddress(value: string, name: string): void {
+  if (typeof value !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) {
+    throw new Error(`Invalid ${name}: ${value}`);
+  }
+}
+
+/**
+ * Live SOL and SPL transfers. Each message is one transaction with its
+ * transfers and the room's balance changes, at processed commitment (a
+ * transaction can be dropped on a fork; reconcile with REST transfers).
+ * Transfers that are legs of a swap stay in the trade rooms. Pass
+ * `{ enriched: true }` for token metadata, USD values and wallet identities.
+ */
+class TransferSubscriptions {
+  constructor(private ds: Datastream) {}
+
+  /**
+   * Transfers to or from a wallet, across every token, with `direction`.
+   * Room: `transfer:wallet:{wallet}`
+   */
+  wallet(wallet: string, options: EnrichedStreamOptions & { enriched: true }): SubscribeResponse<EnrichedTransferUpdate>;
+  wallet(wallet: string, options?: EnrichedStreamOptions & { enriched?: false }): SubscribeResponse<TransferUpdate>;
+  wallet(wallet: string, options?: EnrichedStreamOptions): SubscribeResponse<TransferUpdate | EnrichedTransferUpdate>;
+  wallet(wallet: string, options?: EnrichedStreamOptions): SubscribeResponse<TransferUpdate | EnrichedTransferUpdate> {
+    requireAddress(wallet, 'wallet');
+    return this.ds._subscribe(enrichedRoom(`transfer:wallet:${wallet}`, options));
+  }
+
+  /**
+   * Every transfer of a token, between any wallets. Not available for SOL:
+   * use `wallet()` or `tokenWallet()` with the wrapped SOL mint.
+   * Room: `transfer:{mint}`
+   */
+  token(mint: string, options: EnrichedStreamOptions & { enriched: true }): SubscribeResponse<EnrichedTransferUpdate>;
+  token(mint: string, options?: EnrichedStreamOptions & { enriched?: false }): SubscribeResponse<TransferUpdate>;
+  token(mint: string, options?: EnrichedStreamOptions): SubscribeResponse<TransferUpdate | EnrichedTransferUpdate>;
+  token(mint: string, options?: EnrichedStreamOptions): SubscribeResponse<TransferUpdate | EnrichedTransferUpdate> {
+    requireAddress(mint, 'mint');
+    if (mint === WRAPPED_SOL_MINT || NATIVE_SOL_ALIASES.has(mint)) {
+      throw new Error('transfer:{mint} is not available for SOL; use transfers.wallet() or transfers.tokenWallet()');
+    }
+    return this.ds._subscribe(enrichedRoom(`transfer:${mint}`, options));
+  }
+
+  /**
+   * Transfers of one token to or from one wallet, with `direction`. Works for
+   * SOL with the wrapped SOL mint (other SOL mint spellings are mapped to it).
+   * Room: `transfer:{mint}:{wallet}`
+   */
+  tokenWallet(mint: string, wallet: string, options: EnrichedStreamOptions & { enriched: true }): SubscribeResponse<EnrichedTransferUpdate>;
+  tokenWallet(mint: string, wallet: string, options?: EnrichedStreamOptions & { enriched?: false }): SubscribeResponse<TransferUpdate>;
+  tokenWallet(mint: string, wallet: string, options?: EnrichedStreamOptions): SubscribeResponse<TransferUpdate | EnrichedTransferUpdate>;
+  tokenWallet(mint: string, wallet: string, options?: EnrichedStreamOptions): SubscribeResponse<TransferUpdate | EnrichedTransferUpdate> {
+    requireAddress(mint, 'mint');
+    requireAddress(wallet, 'wallet');
+    const roomMint = NATIVE_SOL_ALIASES.has(mint) ? WRAPPED_SOL_MINT : mint;
+    return this.ds._subscribe(enrichedRoom(`transfer:${roomMint}:${wallet}`, options));
   }
 }
 

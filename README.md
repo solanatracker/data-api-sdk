@@ -4,13 +4,14 @@ JavaScript and TypeScript clients for Solana token data, prices, wallets, trades
 
 [API documentation](https://docs.solanatracker.io/) · [Get an API key](https://www.solanatracker.io/account/data-api) · [Examples](./examples/) · [Report an issue](https://github.com/solanatracker/data-api-sdk/issues)
 
-Version **0.5.0** adds trade/liquidity history, enriched live activity, and compatibility fixes. See the [release notes](./CHANGELOG.md).
+Version **0.6.0** adds wallet transfers (history and live rooms), trade prices in USD, EUR or SOL with market cap, and new search filters. See the [release notes](./CHANGELOG.md).
 
 ## Contents
 
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Trades and liquidity](#trades-and-liquidity)
+- [Transfers](#transfers)
 - [Real-time streams](#real-time-streams)
 - [API and examples](#api-and-examples)
 - [Prediction markets](#prediction-markets)
@@ -114,6 +115,8 @@ All four methods accept the same options:
 
 Set `events` to `'trades'` (the default), `'liquidity'`, or `'all'`. The result always uses a `trades` array, with TypeScript inferring the row type from the selected mode. `limit` accepts 1–500 rows and defaults to 250; `sortDirection` accepts `'ASC'` or `'DESC'` and defaults to descending.
 
+`currency` (`'usd'`, `'eur'` or `'sol'`) adds a `price` to each swap at the time of the trade, and `marketCap: true` adds `marketCap` (that price times the token's current supply). The response then carries `currency`. Swaps against SOL are priced from their own amounts; a `price` is `null` when no rate was found. Liquidity rows get neither field.
+
 `enrich: 'identity'` adds current wallet labels, such as KOL profiles, developer labels, pool identities, platforms, and SNS names. Unknown identities are `null`. The aliases `'all'`, `'*'`, `'pool'`, and `'developer'` also enable identity enrichment. `showMeta` adds swap metadata; `hideArb` filters swap legs while retaining LP activity. These options apply to the four history methods, not wallet-wide or whale/KOL REST feeds.
 
 ### Cursors and exact amounts
@@ -123,6 +126,56 @@ Mixed and liquidity feeds use opaque string cursors; swaps use timestamp cursors
 Liquidity rows contain `pool`, `program`, `programId`, `instruction`, `slot`, `time` in milliseconds, `amountBasis`, and `tokens[]`. Each token's `amount` and `amountRaw` are **strings**: preserve them to avoid precision loss. Optional `feeAmountRaw` and `transferredAmountRaw` preserve transfer details. `amountBasis: 'transfer'` describes gross transfers before Token-2022 withholding; `'principal'` separates principal from fees or internal reallocations. LP rows have no swap price, volume, or PnL fields.
 
 See the [liquidity example](./examples/liquidity.ts) and [API liquidity guide](https://docs.solanatracker.io/guides/liquidity) for the complete workflow.
+
+## Transfers
+
+`getAccountTransfers(wallet, filters)` returns a wallet's SOL and SPL transfers, newest first. Transactions with DEX activity (swaps, liquidity adds and removes, pool fee claims) are left out unless you set `dex: 'include'` or `dex: 'only'`.
+
+```typescript
+const wallet = 'GachaNgyXTU3zFogQ8Z5jR2BLXs8215X2AtEH18VxJq3';
+const sender = 'BfG7WYmravgBhNdWpGoiFmF8L1duw2vdqdDHiZid2hoJ';
+
+const page = await client.getAccountTransfers(wallet, {
+  direction: 'in',
+  mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+  minValue: 10, // USD at the time; turns on historicPrices
+  start: Math.floor(Date.now() / 1000) - 7 * 86400, // Unix seconds
+});
+
+for (const transfer of page.transfers) {
+  console.log(transfer.uiAmount, transfer.token.symbol, transfer.value?.usd, transfer.from?.identity?.name);
+}
+
+// Every page with the same filters. A filtered page can be empty while more remain.
+for await (const next of client.iterateAccountTransfers(wallet, { from: sender })) {
+  console.log(next.transfers.length, next.pagination.hasMore);
+}
+```
+
+Filters: `limit` (1–1000, default 100; at most 100 with a value filter), `cursor`, `sortOrder`, `start`/`end` (Unix seconds; milliseconds are rejected), `startSlot`/`endSlot`, `direction`, `type` (`sol` or `spl`), `mint`, `status` (`success` by default, `failed` or `any`), `dex`, `from`, `to`, `counterparty`, `excludeFrom` and `excludeTo` (up to 5 addresses each, as an array or comma-separated), `minAmount`/`maxAmount` (token units), `minValue`/`maxValue` (USD), `historicPrices`, `grouped` and `excludeZero`. The SDK checks them with the API's rules and throws a `ValidationError` before sending a request the API would refuse.
+
+- `amount` and `uiAmount` are exact strings. `from` or `to` can be `null`, and `identity` is only set for known wallets.
+- `price` and `value` appear with `historicPrices: true` or a value filter. `enrichmentStatus: 'partial'` means some prices timed out and are `null`.
+- `grouped: true` also returns `transactions`: one entry per signature with `type` (`transfer` or `swap`), `direction` (`in`, `out`, `both` or `swap`), `totals` (in, out, net and per token) and, for a one-token-in/one-token-out transaction, `swap`. `pagination.count` then counts transactions and `pagination.transferCount` counts transfers. TypeScript infers the grouped type from `{ grouped: true }`.
+- `iterateAccountTransfers` throws a `DataApiError` if the API hands back a cursor it already returned, instead of looping.
+
+### Live transfers
+
+With a `Datastream` (see [Real-time streams](#real-time-streams)):
+
+```typescript
+stream.subscribe.transfers.wallet(wallet, { enriched: true }).on((update) => {
+  for (const transfer of update.transfers) {
+    console.log(transfer.direction, transfer.uiAmount, transfer.token.symbol, transfer.value.usd, transfer.to.identity?.name);
+  }
+});
+```
+
+- `transfers.wallet(wallet)`: room `transfer:wallet:{wallet}`, every token.
+- `transfers.token(mint)`: room `transfer:{mint}`, between any wallets. Not available for SOL: the SDK throws for the wrapped SOL mint.
+- `transfers.tokenWallet(mint, wallet)`: room `transfer:{mint}:{wallet}`. Works for SOL with the wrapped SOL mint.
+
+Each message is one transaction: its `transfers` (with `direction` in wallet rooms), the room's `balances` changes, and `swapTx`. Transfers that are legs of a swap stay in the trade rooms. `{ enriched: true }` adds `token`, `price`, `value` and `marketCap` to each transfer and balance change, and the `identity` of each wallet (`null` when it has none). Messages are sent at processed commitment, so reconcile with `getAccountTransfers` after reconnecting. See the [transfers example](./examples/transfers.ts) and the [API transfers guide](https://docs.solanatracker.io/guides/transfers).
 
 ## Real-time streams
 
@@ -193,7 +246,7 @@ For the complete method list, see [`Client`](./src/data-api.ts), [`PredictionMar
 
 - **Tokens and discovery:** token details, holders, deployers, search, trending, and launch stages. [Token examples](./examples/tokens.ts) · [Bundlers](./examples/bundlers.ts)
 - **Prices and charts:** current and historical prices, batch prices, OHLCV, and holder charts. [Prices](./examples/prices.ts) · [Charts](./examples/charts.ts)
-- **Wallets and trades:** balances, portfolio data, swaps, and scoped activity history. [Wallets](./examples/wallets.ts) · [Trades](./examples/trades.ts) · [Liquidity](./examples/liquidity.ts)
+- **Wallets and trades:** balances, portfolio data, transfers, swaps, and scoped activity history. [Wallets](./examples/wallets.ts) · [Transfers](./examples/transfers.ts) · [Trades](./examples/trades.ts) · [Liquidity](./examples/liquidity.ts)
 - **PnL v2:** KOL leaderboards, token traders, wallet analytics, positions, and batch lookups. [REST](./examples/pnl-v2.ts) · [Streams](./examples/pnl-v2-datastream.ts)
 - **Jupiter DCA:** programs, orders, token flows, buyers, sellers, users, and pairs. [REST](./examples/dca.ts) · [Streams](./examples/dca-datastream.ts)
 - **Market activity:** token/pool stats, Lighthouse market summaries, whale trades, and KOL trades. [Stats](./examples/stats.ts) · [Lighthouse](./examples/lighthouse.ts) · [Whale/KOL feeds](./examples/whale-kol.ts)
@@ -218,7 +271,7 @@ const holders = await client.getTokenHolders(mint, 'all');
 console.log(holders.accounts);
 ```
 
-Search supports market and launchpad arrays, distribution and risk filters, social filters, and cursor pagination. `format: 'full'` returns full token objects on search and deployer queries. Holder enrichment accepts `'identity'`, `'walletPnl'`, `'identity,walletPnl'`, `'all'`, or `'*'`. See [`SearchParams` and response types](./src/interfaces.ts).
+Search supports market and launchpad arrays, distribution and risk filters, social filters, and cursor pagination. `quoteToken` takes mints or symbols (`['SOL', 'USDC']`); `minTokenCreatedAt`/`maxTokenCreatedAt` filter on the token's creation rather than the pool's; `minBundlerBalance`/`maxBundlerBalance` filter on tokens held by bundlers; and `minMigrationSeconds` (exclusive) / `maxMigrationSeconds` (inclusive) filter on the seconds from creation to migration, which results return as `migrationSeconds` next to `graduatedAt` (milliseconds). `maxMigrationSeconds: 0` finds same-block migrations. `format: 'full'` returns full token objects on search and deployer queries. Holder enrichment accepts `'identity'`, `'walletPnl'`, `'identity,walletPnl'`, `'all'`, or `'*'`. See [`SearchParams` and response types](./src/interfaces.ts).
 
 ### PnL v2 behavior
 

@@ -14,6 +14,7 @@ import {
   type WhaleKolTransaction,
   type MarketTradeSummary,
   type PaginatedMarketTraders,
+  type PoolInfo,
 } from '../src/index';
 
 describe('public exports', () => {
@@ -167,6 +168,46 @@ describe('Client query construction', () => {
     await expect(
       client.getWhaleTrades({ minVolume: 123 as WhaleMinVolume })
     ).rejects.toThrow(/minVolume/);
+  });
+
+  it('searchTokens serializes token creation, bundler balance, quote token and migration filters', async () => {
+    await client.searchTokens({
+      minTokenCreatedAt: 1790000000, maxTokenCreatedAt: 1792483949000,
+      minBundlerBalance: 0, maxBundlerBalance: 1000000,
+      quoteToken: ['SOL', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'],
+      minMigrationSeconds: 0, maxMigrationSeconds: 5, sortBy: 'migrationSeconds', sortOrder: 'asc',
+    });
+    await client.searchTokens({ quoteToken: 'USDC' });
+    const [first, second] = (global.fetch as jest.Mock).mock.calls.map(([url]) => new URL(url));
+    expect(first.pathname).toBe('/search');
+    expect(Object.fromEntries(first.searchParams)).toEqual({
+      minTokenCreatedAt: '1790000000', maxTokenCreatedAt: '1792483949000',
+      minBundlerBalance: '0', maxBundlerBalance: '1000000',
+      quoteToken: 'SOL,EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      minMigrationSeconds: '0', maxMigrationSeconds: '5', sortBy: 'migrationSeconds', sortOrder: 'asc',
+    });
+    expect(second.search).toBe('?quoteToken=USDC');
+  });
+
+  it('searchTokens returns migration and pool quote depth fields', async () => {
+    const result = {
+      status: 'success', data: [{ mint: 'm', graduatedAt: 1792483949123, migrationSeconds: 0.4, launchpad: { name: 'pumpfun' } }],
+    };
+    (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, json: async () => result });
+    const response = await client.searchTokens({ maxMigrationSeconds: 1 });
+    const migration: number | null | undefined = response.data[0].migrationSeconds;
+    expect(migration).toBe(0.4);
+    const pool: PoolInfo['pumpfun'] = { quoteMint: 'pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn', quoteDepth: 1 };
+    expect(pool?.quoteDepth).toBe(1);
+  });
+
+  it('requests 5h candles and only sends marketCap when true', async () => {
+    const mint = 'So11111111111111111111111111111111111111112';
+    await client.getChartData({ tokenAddress: mint, type: '5h', timeFrom: 1790000000 });
+    await client.getChartData({ tokenAddress: mint, type: '5h', marketCap: true });
+    const [first, second] = (global.fetch as jest.Mock).mock.calls.map(([url]) => new URL(url));
+    expect(Object.fromEntries(first.searchParams)).toEqual({ type: '5h', time_from: '1790000000' });
+    expect(Object.fromEntries(second.searchParams)).toEqual({ type: '5h', marketCap: 'true' });
   });
 
   it('passes PnL currency on wallet overview', async () => {
